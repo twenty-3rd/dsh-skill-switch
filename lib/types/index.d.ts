@@ -106,13 +106,36 @@ interface ResolvedConfig {
 export declare function resolveConfig(config?: Partial<PluginConfig>): ResolvedConfig;
 /** 按配置构建某个项目根下的 skill 根列表。 */
 export declare function rootsForProject(config: ResolvedConfig, projectRoot: string | undefined): SkillRootSpec[];
+/** 原始注册表三个入口（包装前捕获的函数值）。 */
+export interface SkillRegistryOriginals {
+    snapshot: SwitchSkillRegistry['snapshot'];
+    list: SwitchSkillRegistry['list'];
+    get: SwitchSkillRegistry['get'];
+}
+/**
+ * 用**已捕获**的原始方法构造只读代理：面板必须看到未经过滤的目录事实
+ * （被屏蔽的 skill 仍然 `inCatalog: true`，虚拟 skill 屏蔽后也不会消失）。
+ *
+ * 关键：不能在代理体里读 `skills.snapshot` —— 那时它已经被换成包装版了，
+ * 面板就会拿到过滤后的结果。cordis 的服务属性每次读取还可能给出不同的绑定
+ * 代理，所以唯一可靠的做法是提前把函数值抓下来。
+ */
+export declare function rawRegistry(skills: SwitchSkillRegistry, originals: SkillRegistryOriginals): SwitchSkillRegistry;
 /**
  * 应用项目级屏蔽：包装 ctx.skills 的 snapshot/list/get。
+ *
+ * 生命周期（cordis 的 `ctx.effect(execute)` 语义是"**立即执行** execute，
+ * 把它的**返回值**登记为 disposer"）：
+ * - 包装前先抓下原始方法，卸载时按捕获值**赋值还原**，不依赖身份比较
+ *   （cordis 的服务属性读取可能每次返回新的绑定代理，`===` 不可靠）；
+ * - `WRAP_TAG` 只在卸载时清掉，这样重复加载/HMR 的双重包装保护才真的生效。
+ *
  * @param ctx - host 上下文。
  * @param config - 已解析配置。
  * @param logger - 日志出口。
+ * @returns 包装前捕获的原始方法（供面板构造未过滤代理）。
  */
-export declare function installSkillFilter(ctx: HostContext, config: ResolvedConfig, logger: SwitchLogger): void;
+export declare function installSkillFilter(ctx: HostContext, config: ResolvedConfig, logger: SwitchLogger): SkillRegistryOriginals;
 /** 面板一次加载的完整视图（所有变更方法都返回它，避免二次请求与竞态）。 */
 export interface PanelView {
     /** 请求解析出的会话工作目录。 */
@@ -144,6 +167,8 @@ export interface PanelView {
     skills: SkillView[];
     /** runtime 目录观察是否完整。 */
     catalogComplete: boolean;
+    /** runtime 目录读取失败（此时"未生效原因"无法判定）。 */
+    catalogError: boolean;
     /** 本次变更动作的报告（只读调用时为 null）。 */
     lastAction: ActionReport | null;
 }
@@ -174,7 +199,18 @@ interface ApiScope {
     config: ResolvedConfig;
     logger: SwitchLogger;
 }
-/** 解析会话的权威 cwd（绝不抛错）。 */
+/**
+ * 解析会话的权威 cwd（绝不抛错）。
+ *
+ * 优先级刻意排成三段，把"客户端传来的路径不可信"落到结构上：
+ * 1. 会话 header 里的 cwd —— 唯一权威来源；
+ * 2. **只有**当宿主确实认识这个会话、但它还没 hydrate 出 cwd 时，才接受客户端
+ *    的绝对路径兜底（面板刚打开时会话可能还在加载）；
+ * 3. 其余情况（含 sessionId 根本不认识）一律用宿主进程 cwd。
+ *
+ * 第 2 条的限定条件很关键：否则任何调用方都能拿一个不存在的 sessionId 加任意
+ * 绝对路径，让开关写入与删除发生在别处。
+ */
 export declare function sessionCwdOf(ctx: HostContext, sessionId: string, clientCwd?: string): string;
 /** 一个 API 方法。 */
 type ApiMethod = (payload: unknown) => Promise<unknown>;
@@ -189,7 +225,7 @@ export declare function apply(ctx: HostContext, config?: Partial<PluginConfig>):
 export { isTrustedApiRequest, isLoopbackHostname } from './trust-fence.ts';
 export { SwitchError } from './wire.ts';
 export type { SwitchErrorCode } from './wire.ts';
-export { ABSENT_STATE, clearSwitches, collectionFor, filterSkills, findProjectRoot, isHidden, isSkillName, normalizeSwitchName, parseMode, readNameSet, readSwitchState, stateFingerprint, switchesPath, writeSwitch, } from './switches.ts';
+export { ABSENT_STATE, clearSwitches, collectionFor, filterSkills, findProjectRoot, isHidden, isSkillName, normalizeSwitchName, parseMode, readNameSet, readSwitchState, removeSwitchFiles, stateFingerprint, switchesPath, writeSwitch, } from './switches.ts';
 export type { SwitchMode, SwitchState } from './switches.ts';
 export { defaultAgentsHome, firstMeaningfulLine, parseFrontmatter, repairFrontmatter, scanSkillRoot, scanSkillRoots, skillRoots, } from './skill-scan.ts';
 export { documentParts, frontmatterKind } from './skill-scan.ts';

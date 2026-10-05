@@ -71,6 +71,8 @@ export interface SkillListView {
   skills: SkillView[]
   /** runtime 目录观察是否完整（provider 报 incomplete 时为 false）。 */
   catalogComplete: boolean
+  /** runtime 目录是否**读取失败**（skill 服务抛错）：面板据此提示"原因未知"。 */
+  catalogError: boolean
   /** 磁盘扫描覆盖的根（面板用来解释"为什么某个 skill 不在列表里"）。 */
   roots: Array<{ path: string; source: SkillRootSource; rank: number; live: boolean; deletable: boolean; exists: boolean }>
 }
@@ -99,6 +101,7 @@ export async function listSkills(options: ListSkillsOptions): Promise<SkillListV
 
   let catalogSkills: Array<{ name: string; description: string; source: string; provider: string; path?: string }> = []
   let catalogComplete = false
+  let catalogError = false
   try {
     const snapshot = await options.skills.snapshot({ cwd: options.cwd })
     catalogSkills = snapshot.skills.map(skill => ({
@@ -110,8 +113,10 @@ export async function listSkills(options: ListSkillsOptions): Promise<SkillListV
     }))
     catalogComplete = snapshot.complete
   } catch {
-    // runtime 目录不可用不该让面板整体失败：降级为"只有磁盘事实"。
+    // runtime 目录不可用不该让面板整体失败：降级为"只有磁盘事实"，
+    // 并把 catalogError 报给面板（否则所有行看起来都像"未生效·原因未知"）。
     catalogComplete = false
+    catalogError = true
   }
   const catalogByName = new Map(catalogSkills.map(skill => [skill.name, skill]))
 
@@ -198,7 +203,7 @@ export async function listSkills(options: ListSkillsOptions): Promise<SkillListV
       exists: await options.pathExists(root.path),
     })
   }
-  return { skills: views, catalogComplete, roots }
+  return { skills: views, catalogComplete, catalogError, roots }
 }
 
 /** 同一名字多处副本的 issues 取并集（任一副本有效就不算"整条未生效"）。 */

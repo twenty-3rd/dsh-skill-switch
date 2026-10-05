@@ -67,6 +67,8 @@ export interface SkillListView {
     skills: SkillView[];
     /** runtime 目录观察是否完整（provider 报 incomplete 时为 false）。 */
     catalogComplete: boolean;
+    /** runtime 目录是否**读取失败**（skill 服务抛错）：面板据此提示"原因未知"。 */
+    catalogError: boolean;
     /** 磁盘扫描覆盖的根（面板用来解释"为什么某个 skill 不在列表里"）。 */
     roots: Array<{
         path: string;

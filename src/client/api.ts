@@ -15,90 +15,28 @@ export class SkillSwitchApiError extends Error {
   }
 }
 
-/** 让 runtime 忽略该条目的原因。 */
-export type SkillIssue =
-  | 'missing-frontmatter'
-  | 'invalid-frontmatter'
-  | 'missing-name'
-  | 'invalid-name'
-  | 'missing-description'
-  | 'invalid-entry-name'
+// wire 形状**只有一份定义**：host 侧的 View 类型。这里用 `import type` 复用，
+// 编译期擦除、运行时不产生任何依赖（tsdown 的纯度闸门也只看值导入），
+// 于是 host 改了字段而客户端忘记改这种事在 `tsc --noEmit` 就会直接报错。
+import type { ActionReport, PanelView } from '../index.ts'
+import type { SkillForm, SkillIssue } from '../skill-scan.ts'
+import type { SkillCopyView, SkillView } from '../skill-view.ts'
 
-/** 一处磁盘副本。 */
-export interface SkillCopy {
-  path: string
-  directory: string
-  form: 'bundle' | 'flat'
-  entryName: string
-  declaredName?: string
-  rootPath: string
-  source: string
-  rank: number
-  live: boolean
-  deletable: boolean
-  issues: SkillIssue[]
-}
+export type { ActionReport, SkillForm, SkillIssue }
 
-/** 面板里的一行。 */
-export interface SkillRow {
-  name: string
-  description: string
-  descriptionSource: 'frontmatter' | 'body' | 'none'
-  nameSource: 'frontmatter' | 'entry'
-  source: string
-  rank: number
-  live: boolean
-  blockable: boolean
-  blocked: boolean
-  inCatalog: boolean
-  issues: SkillIssue[]
-  deletable: boolean
-  path?: string
-  form: 'bundle' | 'flat' | 'virtual'
-  provider?: string
-  catalogSource?: string
-  copies: SkillCopy[]
-}
+/** 一处磁盘副本（= host 的 SkillCopyView）。 */
+export type SkillCopy = SkillCopyView
 
-/** 一个被扫描的 skill 根。 */
-export interface SkillRootRow {
-  path: string
-  source: string
-  rank: number
-  live: boolean
-  deletable: boolean
-  exists: boolean
-}
+/** 面板里的一行（= host 的 SkillView）。 */
+export type SkillRow = SkillView
 
-/** 一次变更动作的报告。 */
-export interface ActionReport {
-  kind: 'toggle' | 'reset' | 'delete' | 'repair'
-  name?: string
-  touched?: string[]
-  removed?: string[]
-  skipped?: Array<{ path: string; source: string; reason: string; message?: string }>
-  repaired?: string[]
-  /** reset 是否顺带移除了 mode 文件（白名单模式下的必要动作）。 */
-  modeReset?: boolean
-}
+/** 一个被扫描的 skill 根（= PanelView["roots"] 的元素）。 */
+export type SkillRootRow = PanelView['roots'][number]
 
-/** 面板一次加载的完整数据。 */
-export interface PanelData {
-  cwd: string
-  projectRoot: string
-  switchesPath: string
-  mode: 'deny' | 'allow'
-  switchesPresent: boolean
-  off: string[]
-  on: string[]
-  ignored: string[]
-  roots: SkillRootRow[]
-  skills: SkillRow[]
-  catalogComplete: boolean
-  lastAction: ActionReport | null
-}
+/** 面板一次加载的完整数据（= host 的 PanelView）。 */
+export type PanelData = PanelView
 
-/** 请求作用域：会话 id + （未知时省略的）cwd。 */
+/** 请求作用域：会话 id + （会话尚未 hydrate 时才有意义的）cwd。 */
 export interface PanelScope {
   sessionId: string
   cwd?: string

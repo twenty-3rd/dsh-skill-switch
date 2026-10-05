@@ -24,8 +24,14 @@
 export type SkillRootSource = 'project-dsh' | 'project-agents' | 'custom' | 'user-dsh' | 'user-agents' | 'bundled' | 'library';
 /** skill 的落盘形态：目录 bundle（含 SKILL.md）或单文件 <name>.md。 */
 export type SkillForm = 'bundle' | 'flat';
-/** 一个候选条目被官方 provider 忽略的原因（面板据此解释「未生效」）。 */
-export type SkillIssue = 'missing-frontmatter' | 'invalid-frontmatter' | 'missing-name' | 'invalid-name' | 'missing-description' | 'invalid-entry-name';
+/**
+ * 一个候选条目被官方 provider 忽略的原因（面板据此解释「未生效」）。
+ *
+ * 取值对齐 `@deepseek-ai/dsh-skill-filesystem` 的 `parseSkillFile()`：
+ * 它会在 frontmatter 缺失/坏掉、缺 name、name 不合语法、缺 description、
+ * 以及 invocation 字段非法（含遗留键）这几种情况下**整条丢弃**。
+ */
+export type SkillIssue = 'missing-frontmatter' | 'invalid-frontmatter' | 'missing-name' | 'invalid-name' | 'missing-description' | 'invalid-entry-name' | 'invalid-invocation';
 /** 一个被扫描的 skill 根。 */
 export interface SkillRootSpec {
     /** 根的绝对路径。 */

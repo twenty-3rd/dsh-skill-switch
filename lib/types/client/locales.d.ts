@@ -6,7 +6,6 @@ export declare const LOCALE_NS = "dsh-skill-switch";
 /** zh 字典（同时注册进 DSH locale registry）。 */
 export declare const zh: {
     readonly panelTitle: "Skill 开关";
-    readonly subtitle: "项目级屏蔽与全局删除";
     readonly filterAll: "全部";
     readonly filterBlocked: "已屏蔽";
     readonly filterBroken: "未生效";
@@ -23,12 +22,10 @@ export declare const zh: {
     readonly block: "屏蔽";
     readonly unblock: "启用";
     readonly ops: "操作";
-    readonly delete: "删除（全局）";
+    readonly delete: "删除（全部副本）";
     readonly repair: "补齐 frontmatter";
     readonly cancel: "取消";
     readonly confirm: "确认";
-    readonly close: "关闭";
-    readonly back: "返回";
     readonly summary: "共 {total} 个 · 已屏蔽 {blocked} · 未生效 {broken}";
     readonly projectOf: "项目";
     readonly switchesOf: "开关目录";
@@ -51,10 +48,20 @@ export declare const zh: {
     readonly issueInvalidName: "name 不是合法 kebab-case";
     readonly issueMissingDescription: "frontmatter 缺少 description";
     readonly issueInvalidEntryName: "目录/文件名不是合法 kebab-case";
+    readonly issueInvalidInvocation: "invocation 字段非法（含遗留键），DSH 会忽略它";
+    readonly issueUnknown: "注册表里没有它，但 frontmatter 也看不出问题——原因未知";
     readonly descFromBody: "描述取自正文首段";
     readonly nameFromEntry: "名字取自目录名";
     readonly notBlockable: "名字不合法，无法按名写开关";
-    readonly deleteConfirm: "将在下列位置永久删除该 skill（不可恢复）：";
+    readonly deleteConfirm: "将在下列位置永久删除该 skill（不可恢复）。其他项目自己的 .dsh/skills 不在本面板扫描范围内：";
+    readonly protectedCopy: "受保护，将跳过";
+    readonly skippedOf: "有 {count} 处副本被跳过（受保护或删除失败）";
+    readonly catalogUnavailable: "runtime skill 目录读取失败，下面的「生效状态」不可信。";
+    readonly errBadRequest: "请求不合法（名字或参数有问题）";
+    readonly errNotFound: "找不到该 skill 的落盘副本";
+    readonly errProtected: "它由运行时提供，磁盘上没有可删除的副本";
+    readonly errForbidden: "出于安全考虑拒绝了这次操作";
+    readonly errNetwork: "无法连接到 DSH 服务";
     readonly deleteProtected: "该 skill 由运行时提供，磁盘上没有可删除的副本";
     readonly repairConfirm: "给下列文件补上 frontmatter（只改 frontmatter，正文不动）：";
     readonly resetDone: "已清空本项目全部开关";
@@ -62,7 +69,6 @@ export declare const zh: {
     readonly deleteDone: "已删除";
     readonly repairDone: "已补齐 frontmatter";
     readonly wireError: "请求失败";
-    readonly rootMissing: "根不存在";
 };
 /** en 字典（keys 与 zh 完全一致）。 */
 export declare const en: Record<keyof typeof zh, string>;
@@ -70,7 +76,6 @@ export declare const en: Record<keyof typeof zh, string>;
 export declare const dictionaries: {
     zh: {
         readonly panelTitle: "Skill 开关";
-        readonly subtitle: "项目级屏蔽与全局删除";
         readonly filterAll: "全部";
         readonly filterBlocked: "已屏蔽";
         readonly filterBroken: "未生效";
@@ -87,12 +92,10 @@ export declare const dictionaries: {
         readonly block: "屏蔽";
         readonly unblock: "启用";
         readonly ops: "操作";
-        readonly delete: "删除（全局）";
+        readonly delete: "删除（全部副本）";
         readonly repair: "补齐 frontmatter";
         readonly cancel: "取消";
         readonly confirm: "确认";
-        readonly close: "关闭";
-        readonly back: "返回";
         readonly summary: "共 {total} 个 · 已屏蔽 {blocked} · 未生效 {broken}";
         readonly projectOf: "项目";
         readonly switchesOf: "开关目录";
@@ -115,10 +118,20 @@ export declare const dictionaries: {
         readonly issueInvalidName: "name 不是合法 kebab-case";
         readonly issueMissingDescription: "frontmatter 缺少 description";
         readonly issueInvalidEntryName: "目录/文件名不是合法 kebab-case";
+        readonly issueInvalidInvocation: "invocation 字段非法（含遗留键），DSH 会忽略它";
+        readonly issueUnknown: "注册表里没有它，但 frontmatter 也看不出问题——原因未知";
         readonly descFromBody: "描述取自正文首段";
         readonly nameFromEntry: "名字取自目录名";
         readonly notBlockable: "名字不合法，无法按名写开关";
-        readonly deleteConfirm: "将在下列位置永久删除该 skill（不可恢复）：";
+        readonly deleteConfirm: "将在下列位置永久删除该 skill（不可恢复）。其他项目自己的 .dsh/skills 不在本面板扫描范围内：";
+        readonly protectedCopy: "受保护，将跳过";
+        readonly skippedOf: "有 {count} 处副本被跳过（受保护或删除失败）";
+        readonly catalogUnavailable: "runtime skill 目录读取失败，下面的「生效状态」不可信。";
+        readonly errBadRequest: "请求不合法（名字或参数有问题）";
+        readonly errNotFound: "找不到该 skill 的落盘副本";
+        readonly errProtected: "它由运行时提供，磁盘上没有可删除的副本";
+        readonly errForbidden: "出于安全考虑拒绝了这次操作";
+        readonly errNetwork: "无法连接到 DSH 服务";
         readonly deleteProtected: "该 skill 由运行时提供，磁盘上没有可删除的副本";
         readonly repairConfirm: "给下列文件补上 frontmatter（只改 frontmatter，正文不动）：";
         readonly resetDone: "已清空本项目全部开关";
@@ -126,9 +139,8 @@ export declare const dictionaries: {
         readonly deleteDone: "已删除";
         readonly repairDone: "已补齐 frontmatter";
         readonly wireError: "请求失败";
-        readonly rootMissing: "根不存在";
     };
-    en: Record<"delete" | "repair" | "panelTitle" | "subtitle" | "filterAll" | "filterBlocked" | "filterBroken" | "searchPlaceholder" | "resetAll" | "resetConfirm" | "resetConfirmAllow" | "loading" | "loadFailed" | "emptyAll" | "emptyFiltered" | "emptyBlocked" | "emptyBroken" | "block" | "unblock" | "ops" | "cancel" | "confirm" | "close" | "back" | "summary" | "projectOf" | "switchesOf" | "rootProjectDsh" | "rootProjectAgents" | "rootCustom" | "rootUserDsh" | "rootUserAgents" | "rootBundled" | "rootLibrary" | "badgeBlocked" | "badgeBroken" | "badgeUnassigned" | "badgeBundled" | "badgeVirtual" | "copiesOf" | "issueMissingFrontmatter" | "issueInvalidFrontmatter" | "issueMissingName" | "issueInvalidName" | "issueMissingDescription" | "issueInvalidEntryName" | "descFromBody" | "nameFromEntry" | "notBlockable" | "deleteConfirm" | "deleteProtected" | "repairConfirm" | "resetDone" | "toggleDone" | "deleteDone" | "repairDone" | "wireError" | "rootMissing", string>;
+    en: Record<"delete" | "repair" | "panelTitle" | "filterAll" | "filterBlocked" | "filterBroken" | "searchPlaceholder" | "resetAll" | "resetConfirm" | "resetConfirmAllow" | "loading" | "loadFailed" | "emptyAll" | "emptyFiltered" | "emptyBlocked" | "emptyBroken" | "block" | "unblock" | "ops" | "cancel" | "confirm" | "summary" | "projectOf" | "switchesOf" | "rootProjectDsh" | "rootProjectAgents" | "rootCustom" | "rootUserDsh" | "rootUserAgents" | "rootBundled" | "rootLibrary" | "badgeBlocked" | "badgeBroken" | "badgeUnassigned" | "badgeBundled" | "badgeVirtual" | "copiesOf" | "issueMissingFrontmatter" | "issueInvalidFrontmatter" | "issueMissingName" | "issueInvalidName" | "issueMissingDescription" | "issueInvalidEntryName" | "issueInvalidInvocation" | "issueUnknown" | "descFromBody" | "nameFromEntry" | "notBlockable" | "deleteConfirm" | "protectedCopy" | "skippedOf" | "catalogUnavailable" | "errBadRequest" | "errNotFound" | "errProtected" | "errForbidden" | "errNetwork" | "deleteProtected" | "repairConfirm" | "resetDone" | "toggleDone" | "deleteDone" | "repairDone" | "wireError", string>;
 };
 /** 文案 key。 */
 export type CopyKey = keyof typeof zh;

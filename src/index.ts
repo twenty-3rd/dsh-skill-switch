@@ -50,6 +50,7 @@ import {
   isHidden,
   isSkillName,
   readSwitchState,
+  removeSwitchFiles,
   stateFingerprint,
   switchesPath,
   writeSwitch,
@@ -152,26 +153,53 @@ export function rootsForProject(config: ResolvedConfig, projectRoot: string | un
 /** 防止 HMR/重复加载造成双重包装的实例标记。 */
 const WRAP_TAG = Symbol.for('dsh-skill-switch.wrapped')
 
-/** 只读原始注册表三个入口的代理（面板要未经过滤的目录事实）。 */
-function rawRegistry(skills: SwitchSkillRegistry): SwitchSkillRegistry {
+/** 原始注册表三个入口（包装前捕获的函数值）。 */
+export interface SkillRegistryOriginals {
+  snapshot: SwitchSkillRegistry['snapshot']
+  list: SwitchSkillRegistry['list']
+  get: SwitchSkillRegistry['get']
+}
+
+/**
+ * 用**已捕获**的原始方法构造只读代理：面板必须看到未经过滤的目录事实
+ * （被屏蔽的 skill 仍然 `inCatalog: true`，虚拟 skill 屏蔽后也不会消失）。
+ *
+ * 关键：不能在代理体里读 `skills.snapshot` —— 那时它已经被换成包装版了，
+ * 面板就会拿到过滤后的结果。cordis 的服务属性每次读取还可能给出不同的绑定
+ * 代理，所以唯一可靠的做法是提前把函数值抓下来。
+ */
+export function rawRegistry(skills: SwitchSkillRegistry, originals: SkillRegistryOriginals): SwitchSkillRegistry {
   return {
-    snapshot: options => skills.snapshot.call(skills, options),
-    list: options => skills.list.call(skills, options),
-    get: (skillName, options) => skills.get.call(skills, skillName, options),
+    snapshot: options => originals.snapshot.call(skills, options),
+    list: options => originals.list.call(skills, options),
+    get: (skillName, options) => originals.get.call(skills, skillName, options),
   }
 }
 
 /**
  * 应用项目级屏蔽：包装 ctx.skills 的 snapshot/list/get。
+ *
+ * 生命周期（cordis 的 `ctx.effect(execute)` 语义是"**立即执行** execute，
+ * 把它的**返回值**登记为 disposer"）：
+ * - 包装前先抓下原始方法，卸载时按捕获值**赋值还原**，不依赖身份比较
+ *   （cordis 的服务属性读取可能每次返回新的绑定代理，`===` 不可靠）；
+ * - `WRAP_TAG` 只在卸载时清掉，这样重复加载/HMR 的双重包装保护才真的生效。
+ *
  * @param ctx - host 上下文。
  * @param config - 已解析配置。
  * @param logger - 日志出口。
+ * @returns 包装前捕获的原始方法（供面板构造未过滤代理）。
  */
-export function installSkillFilter(ctx: HostContext, config: ResolvedConfig, logger: SwitchLogger): void {
+export function installSkillFilter(
+  ctx: HostContext,
+  config: ResolvedConfig,
+  logger: SwitchLogger,
+): SkillRegistryOriginals {
   const skills = ctx.skills as SwitchSkillRegistry & { [WRAP_TAG]?: boolean }
   if (skills[WRAP_TAG] === true) {
     logger.warn('skill-switch: ctx.skills already wrapped; skipping re-apply')
-    return
+    // 已经被本插件包过：归还当前实例上的方法，面板仍旧拿"当前可用的原样"。
+    return { snapshot: skills.snapshot, list: skills.list, get: skills.get }
   }
   const cache = new Map<string, { state: SwitchState; fingerprint: string; dirFingerprint: string; readAt: number }>()
 
@@ -235,6 +263,7 @@ export function installSkillFilter(ctx: HostContext, config: ResolvedConfig, log
   }
 
   const originalSnapshot = skills.snapshot
+  const originalList = skills.list
   const originalGet = skills.get
 
   /** 包装 snapshot：过滤摘要数组，其余字段（complete 等）原样保留。 */
@@ -268,15 +297,23 @@ export function installSkillFilter(ctx: HostContext, config: ResolvedConfig, log
   skills.get = wrappedGet as SwitchSkillRegistry['get']
   skills[WRAP_TAG] = true
 
-  /** 插件卸载时摘除包装，恢复原型方法。 */
-  ctx.effect(() => {
+  /**
+   * 插件卸载时摘除包装，恢复原始方法。
+   *
+   * 注意 cordis 的 `ctx.effect(execute)` 语义：execute **立即执行**，它的
+   * **返回值**才被登记为 disposer。teardown 必须写在返回的函数里；写成
+   * effect body 会在安装的瞬间就"卸载"，而真正卸载时什么都不发生。
+   */
+  ctx.effect(() => () => {
+    skills.snapshot = originalSnapshot
+    skills.list = originalList
+    skills.get = originalGet
     delete skills[WRAP_TAG]
-    if (skills.snapshot === wrappedSnapshot) delete (skills as Partial<SwitchSkillRegistry>).snapshot
-    if (skills.list === wrappedList) delete (skills as Partial<SwitchSkillRegistry>).list
-    if (skills.get === wrappedGet) delete (skills as Partial<SwitchSkillRegistry>).get
     cache.clear()
     logger.info('skill-switch: unwrapped ctx.skills; original service restored')
   }, 'dsh-skill-switch: ctx.skills filter')
+
+  return { snapshot: originalSnapshot, list: originalList, get: originalGet }
 }
 
 // ── 2. 面板 API ────────────────────────────────────────────────────────────
@@ -305,6 +342,8 @@ export interface PanelView {
   skills: SkillView[]
   /** runtime 目录观察是否完整。 */
   catalogComplete: boolean
+  /** runtime 目录读取失败（此时"未生效原因"无法判定）。 */
+  catalogError: boolean
   /** 本次变更动作的报告（只读调用时为 null）。 */
   lastAction: ActionReport | null
 }
@@ -333,10 +372,22 @@ interface ApiScope {
   logger: SwitchLogger
 }
 
-/** 解析会话的权威 cwd（绝不抛错）。 */
+/**
+ * 解析会话的权威 cwd（绝不抛错）。
+ *
+ * 优先级刻意排成三段，把"客户端传来的路径不可信"落到结构上：
+ * 1. 会话 header 里的 cwd —— 唯一权威来源；
+ * 2. **只有**当宿主确实认识这个会话、但它还没 hydrate 出 cwd 时，才接受客户端
+ *    的绝对路径兜底（面板刚打开时会话可能还在加载）；
+ * 3. 其余情况（含 sessionId 根本不认识）一律用宿主进程 cwd。
+ *
+ * 第 2 条的限定条件很关键：否则任何调用方都能拿一个不存在的 sessionId 加任意
+ * 绝对路径，让开关写入与删除发生在别处。
+ */
 export function sessionCwdOf(ctx: HostContext, sessionId: string, clientCwd?: string): string {
   const session = ctx.sessions.get(sessionId)
-  const headerCwd = session?.header.cwd
+  if (session === undefined) return process.cwd()
+  const headerCwd = session.header.cwd
   if (headerCwd !== undefined && headerCwd !== '') return headerCwd
   if (clientCwd !== undefined && clientCwd !== '' && isAbsolute(clientCwd)) return clientCwd
   return process.cwd()
@@ -349,11 +400,10 @@ interface ProjectScope {
   state: SwitchState
 }
 
-/** 从 payload 解析请求作用域（sessionId 必填）。 */
+/** 从 payload 解析请求作用域（sessionId 必填；cwd 只在会话已知但未 hydrate 时兜底）。 */
 async function projectScopeOf(scope: ApiScope, payload: unknown): Promise<ProjectScope> {
   const sessionId = requireString(payload, 'sessionId')
-  const clientCwd = optionalString(payload, 'cwd')
-  const cwd = sessionCwdOf(scope.ctx, sessionId, clientCwd)
+  const cwd = sessionCwdOf(scope.ctx, sessionId, optionalString(payload, 'cwd'))
   const projectRoot = await findProjectRoot(cwd)
   const state = await readSwitchState(projectRoot, scope.config.switchesDir, scope.config.defaultMode)
   return { cwd, projectRoot, state }
@@ -386,6 +436,7 @@ async function buildPanelView(
     roots: list.roots,
     skills: list.skills,
     catalogComplete: list.catalogComplete,
+    catalogError: list.catalogError,
     lastAction,
   }
 }
@@ -470,17 +521,19 @@ export function api(scope: ApiScope): Record<string, ApiMethod> {
         deletable: copy.deletable,
       }))
       const outcome: DeleteOutcome = await deleteSkillCopies(targets)
-      // 顺手清掉本项目的开关文件：删掉再装回来时不该带着旧屏蔽。
-      const { projectRoot, state } = await projectScopeOf(scope, payload)
-      if (isSkillName(skillName)) {
-        await writeSwitch(projectRoot, scope.config.switchesDir, skillName, false, state.mode).catch(() => [])
-      }
+      // 顺手清掉本项目的开关文件（两侧都清，且不新建任何文件）：删掉再装回来
+      // 时不该带着旧屏蔽。这里不能走 writeSwitch(name, false)，因为 allow 模式
+      // 下那等于往 on/ 写一个"预授权可见"的幽灵条目。
+      const { projectRoot } = await projectScopeOf(scope, payload)
+      const touched = await removeSwitchFiles(projectRoot, scope.config.switchesDir, skillName).catch(() => [])
+      if (touched.length > 0) scope.logger.info(`skill-switch: cleared ${touched.length} switch file(s) for "${skillName}"`)
       scope.logger.info(`skill-switch: deleted "${skillName}" from ${outcome.removed.length} location(s)`)
       return await buildPanelView(scope, payload, {
         kind: 'delete',
         name: skillName,
         removed: outcome.removed,
         skipped: outcome.skipped,
+        touched,
       })
     },
 
@@ -575,7 +628,9 @@ function makeHandler(scope: ApiScope): SwitchWebRoute['handler'] {
       writeError(res, new SwitchError('not-found', 'unknown skill-switch API path', 404))
       return
     }
-    const handler = methods[method]
+    // `Object.hasOwn`：方法表是普通对象，直接 `methods[method]` 会命中
+    // constructor / toString / valueOf 这些原型成员，把"未知方法 404"绕过去。
+    const handler = Object.hasOwn(methods, method) ? methods[method] : undefined
     if (handler === undefined) {
       writeError(res, new SwitchError('not-found', `unknown skill-switch API method "${method}"`, 404))
       return
@@ -597,13 +652,17 @@ function makeHandler(scope: ApiScope): SwitchWebRoute['handler'] {
 export function apply(ctx: HostContext, config: Partial<PluginConfig> = {}): void {
   const resolved = resolveConfig(config)
   const logger: SwitchLogger = ctx.logger ?? console
-  const raw = rawRegistry(ctx.skills)
-  installSkillFilter(ctx, resolved, logger)
+  // 先装过滤器（它返回包装前捕获的原始方法），再用原始方法构造面板要读的
+  // "未过滤"代理——顺序不能反：在代理体里读 ctx.skills 只会拿到包装后的版本。
+  const originals = installSkillFilter(ctx, resolved, logger)
+  const raw = rawRegistry(ctx.skills, originals)
 
   // webServer / sessions / loader 不是硬依赖：用 ctx.inject 等它们齐了再挂路由，
   // 这样无 Web 的部署（CLI / headless）里屏蔽逻辑照常生效。
   ctx.inject(['webServer', 'sessions', 'loader'], (scope: HostContext) => {
     const apiScope: ApiScope = { ctx: scope, raw, config: resolved, logger }
+    // `ctx.effect` 的 execute 立即执行、其**返回值**被登记为 disposer：
+    // register() 返回的注销函数正好就是这里要登记的清理动作。
     scope.effect(
       () => scope.webServer.register({ kind: 'prefix', path: '/skill-switch', handler: makeHandler(apiScope) }),
       'dsh-skill-switch: /skill-switch API routes',
@@ -636,6 +695,7 @@ export {
   parseMode,
   readNameSet,
   readSwitchState,
+  removeSwitchFiles,
   stateFingerprint,
   switchesPath,
   writeSwitch,

@@ -148,16 +148,16 @@ describe('SkillCard：事实区', () => {
 })
 
 describe('SkillCard：操作菜单', () => {
-  it('默认菜单：未生效项出现「补齐 frontmatter」与「删除（全局）」', () => {
+  it('默认菜单：未生效项出现「补齐 frontmatter」与「删除（全部副本）」', () => {
     const markup = renderCard({ inCatalog: false, issues: ['missing-description'], descriptionSource: 'body' }, { name: 'demo', mode: 'actions' })
     expect(markup).toContain('补齐 frontmatter')
-    expect(markup).toContain('删除（全局）')
+    expect(markup).toContain('删除（全部副本）')
   })
 
   it('默认菜单：frontmatter 完整时不给「补齐 frontmatter」', () => {
     const markup = renderCard({}, { name: 'demo', mode: 'actions' })
     expect(markup).not.toContain('补齐 frontmatter')
-    expect(markup).toContain('删除（全局）')
+    expect(markup).toContain('删除（全部副本）')
   })
 
   it('默认菜单：虚拟项禁用删除并说明原因', () => {
@@ -176,7 +176,7 @@ describe('SkillCard：操作菜单', () => {
     expect(markup).toContain('将在下列位置永久删除')
     expect(markup).toContain('/proj/.dsh/skills')       // bundle 列目录
     expect(markup).toContain('/home/me/.dsh/skills/demo.md') // flat 列文件
-    expect(markup).toContain('删除（全局）')
+    expect(markup).toContain('删除（全部副本）')
     expect(markup).toContain('取消')
   })
 
@@ -210,7 +210,36 @@ describe('SkillCard：英文 locale', () => {
     expect(markup).toContain('Blocked')
     expect(markup).toContain('Inactive')
     expect(markup).toContain('Actions')
-    expect(markup).toContain('Delete (global)')
+    expect(markup).toContain('Delete (all copies)')
     expect(markup).not.toContain('已屏蔽')
+  })
+})
+
+describe('SkillCard：诚实性（回归）', () => {
+  it('删除确认里把受保护副本标出来，用户不会误以为删干净了', () => {
+    const markup = renderCard({
+      copies: [
+        copy(),
+        copy({ source: 'bundled', deletable: false, path: '/app/bundled/demo/SKILL.md', directory: '/app/bundled/demo' }),
+      ],
+    }, { name: 'demo', mode: 'confirm-delete' })
+    expect(markup).toContain('受保护，将跳过')
+    expect(markup).toContain('/app/bundled/demo')
+  })
+
+  it('磁盘上有、注册表里没有、frontmatter 又没问题 -> 显示"未生效 · 原因未知"', () => {
+    const markup = renderCard({ inCatalog: false, issues: [] })
+    expect(markup).toContain('未生效')
+    expect(markup).toContain('原因未知')
+  })
+
+  it('库里的副本（未分配）不该被当成"未生效"', () => {
+    const markup = renderCard({
+      source: 'library',
+      inCatalog: false,
+      copies: [copy({ source: 'library', live: false, rootPath: '/home/me/.dsh/skill-library' })],
+    })
+    expect(markup).toContain('未分配')
+    expect(markup).not.toContain('未生效')
   })
 })

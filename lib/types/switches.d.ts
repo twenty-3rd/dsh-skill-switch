@@ -135,6 +135,14 @@ export interface ClearSwitchesOptions {
     includeMode?: boolean;
 }
 /**
+ * 把一个名字从**两侧**开关集合里清掉（off/ 与 on/，含 `.md` 变体），
+ * 不创建任何文件。用于"删除 skill 后顺手清掉它的开关"：此时不能用
+ * `writeSwitch(..., blocked=false)`，因为 allow 模式下那等于往 `on/`
+ * 写一个"预授权可见"的幽灵条目。
+ * @returns 被删除的绝对路径列表。
+ */
+export declare function removeSwitchFiles(projectRoot: string, switchesDir: string, name: string): Promise<string[]>;
+/**
  * 清空一个项目的全部开关：删除 off/ 与 on/ 两个集合目录里的所有条目，
  * 并把两侧空目录一并移除；`includeMode` 为真时连 mode 文件一起删。
  * 项目没有开关目录时是 no-op。

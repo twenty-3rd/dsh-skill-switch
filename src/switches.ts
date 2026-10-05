@@ -285,6 +285,25 @@ export interface ClearSwitchesOptions {
 }
 
 /**
+ * 把一个名字从**两侧**开关集合里清掉（off/ 与 on/，含 `.md` 变体），
+ * 不创建任何文件。用于"删除 skill 后顺手清掉它的开关"：此时不能用
+ * `writeSwitch(..., blocked=false)`，因为 allow 模式下那等于往 `on/`
+ * 写一个"预授权可见"的幽灵条目。
+ * @returns 被删除的绝对路径列表。
+ */
+export async function removeSwitchFiles(projectRoot: string, switchesDir: string, name: string): Promise<string[]> {
+  if (!isSkillName(name)) return []
+  const base = switchesPath(projectRoot, switchesDir)
+  const touched: string[] = []
+  for (const collection of ['off', 'on'] as const) {
+    for (const candidate of [join(base, collection, name), join(base, collection, `${name}.md`)]) {
+      if (await removeIfPresent(candidate)) touched.push(candidate)
+    }
+  }
+  return touched
+}
+
+/**
  * 清空一个项目的全部开关：删除 off/ 与 on/ 两个集合目录里的所有条目，
  * 并把两侧空目录一并移除；`includeMode` 为真时连 mode 文件一起删。
  * 项目没有开关目录时是 no-op。
@@ -321,11 +340,23 @@ export async function clearSwitches(
         /* 单个条目删不掉不影响整体恢复 */
       }
     }
+    // 空目录用 recursive: true 删（fs.rm 对目录传 recursive: false 会抛
+    // EISDIR，被 catch 吞掉的话目录永远留着，readSwitchState 就会一直报
+    // present: true）。
     try {
-      await rm(dir, { recursive: false, force: false })
+      await rm(dir, { recursive: true, force: true })
     } catch {
-      /* 目录非空或已消失：保持原样 */
+      /* 已消失：保持原样 */
     }
+  }
+  // 三个开关文件都清干净后，把开关目录本身也删掉，让项目回到
+  // present:false 的纯透传状态（否则 defaultMode=allow 时"空 on/ + allow"
+  // 仍然等于全部隐藏）。
+  try {
+    const rest = await readdir(base)
+    if (rest.length === 0) await rm(base, { recursive: true, force: true })
+  } catch {
+    /* 目录非空 / 已消失：保持原样 */
   }
   return removed
 }

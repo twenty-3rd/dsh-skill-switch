@@ -20,6 +20,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const packageRoot = fileURLToPath(new URL('..', import.meta.url))
+const hostBundlePath = join(packageRoot, 'lib', 'index.js')
 const clientBundlePath = join(packageRoot, 'lib', 'client.js')
 const PLUGIN_ID = 'dsh-skill-switch'
 
@@ -88,13 +89,12 @@ function platformRequire(id: string): unknown {
 }
 
 describe('lib/client.js 作为真实产物', () => {
-  it('产物比 src 新（改了源码必须先 pnpm build）', async () => {
-    const bundle = await stat(clientBundlePath)
+  it('两个半体的产物都比 src 新（改了源码必须先 pnpm build）', async () => {
     const newestSource = await newestSourceMtime(join(packageRoot, 'src'))
-    expect(
-      bundle.mtimeMs,
-      'lib/client.js 比 src 旧：请先运行 `pnpm build` 再跑测试',
-    ).toBeGreaterThanOrEqual(newestSource)
+    for (const [label, path] of [['lib/index.js', hostBundlePath], ['lib/client.js', clientBundlePath]] as const) {
+      const bundle = await stat(path)
+      expect(bundle.mtimeMs, `${label} 比 src 旧：请先运行 \`pnpm build\` 再跑测试`).toBeGreaterThanOrEqual(newestSource)
+    }
   })
 
   it('按 window.__ModuleLoader__ 契约注册，factory 只用平台模块', async () => {

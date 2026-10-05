@@ -40,7 +40,13 @@ export type SkillRootSource =
 /** skill 的落盘形态：目录 bundle（含 SKILL.md）或单文件 <name>.md。 */
 export type SkillForm = 'bundle' | 'flat'
 
-/** 一个候选条目被官方 provider 忽略的原因（面板据此解释「未生效」）。 */
+/**
+ * 一个候选条目被官方 provider 忽略的原因（面板据此解释「未生效」）。
+ *
+ * 取值对齐 `@deepseek-ai/dsh-skill-filesystem` 的 `parseSkillFile()`：
+ * 它会在 frontmatter 缺失/坏掉、缺 name、name 不合语法、缺 description、
+ * 以及 invocation 字段非法（含遗留键）这几种情况下**整条丢弃**。
+ */
 export type SkillIssue =
   | 'missing-frontmatter'
   | 'invalid-frontmatter'
@@ -48,6 +54,7 @@ export type SkillIssue =
   | 'invalid-name'
   | 'missing-description'
   | 'invalid-entry-name'
+  | 'invalid-invocation'
 
 /** 一个被扫描的 skill 根。 */
 export interface SkillRootSpec {
@@ -230,6 +237,7 @@ export async function readCandidate(
   const issues: SkillIssue[] = []
   if (parts.kind === 'invalid') issues.push('invalid-frontmatter')
   else if (parts.kind === 'absent') issues.push('missing-frontmatter')
+  if (data !== undefined && invocationPolicyInvalid(data)) issues.push('invalid-invocation')
 
   const declaredName = data === undefined ? undefined : stringField(data, 'name')
   let name: string
@@ -303,7 +311,9 @@ export function documentParts(raw: string): DocumentParts {
   if (firstLineEnd < 0) return { kind: 'absent', body: raw }
   if (raw.slice(0, firstLineEnd).replace(/\r$/, '') !== '---') return { kind: 'absent', body: raw }
   const closing = findClosingFence(raw, firstLineEnd + 1)
-  if (closing === undefined) return { kind: 'invalid', body: '' }
+  // 有 `---` 开头但没有收尾围栏：body 回退成**整个原文**，这样"补齐 frontmatter"
+  // 只会把新 frontmatter 插到最前面，绝不会把文件内容替换掉。
+  if (closing === undefined) return { kind: 'invalid', body: raw }
   const body = raw.slice(closing.bodyStart)
   let data: unknown
   try {
@@ -338,6 +348,8 @@ export function firstMeaningfulLine(body: string): string {
     }
     if (inFence) continue
     if (text === '') continue
+    // 纯分隔线（---、===、***）不是描述。
+    if (/^[-=_*~]{3,}$/.test(text)) continue
     const stripped = text.replace(/^#{1,6}\s*/, '').replace(/^[-*>]\s*/, '').trim()
     if (stripped === '') continue
     return stripped.length > 160 ? `${stripped.slice(0, 157)}…` : stripped
@@ -391,11 +403,44 @@ export async function ensureDir(path: string): Promise<void> {
   await mkdir(path, { recursive: true })
 }
 
+/**
+ * 与官方 provider 的 `stringField` **逐字对齐**：只有非空 string 才算字段存在，
+ * 不做 trim、不把数字转字符串。
+ *
+ * 之前这里做了 trim + number→string，会把官方**丢弃**的条目（`name: 123`、
+ * `description: 123`）显示成完全正常，也会把官方**接受**的 `description: "  "`
+ * 误报成"缺 description"——两种都会让用户对"是否真的生效"判断错误。
+ */
 function stringField(data: Record<string, unknown>, key: string): string | undefined {
   const value = data[key]
-  if (typeof value === 'string' && value.trim() !== '') return value.trim()
-  if (typeof value === 'number') return String(value)
-  return undefined
+  return typeof value === 'string' && value.length > 0 ? value : undefined
+}
+
+/** 官方会因 invocation 字段非法而丢弃整条；这里复刻它的判定并只回报结果。 */
+function invocationPolicyInvalid(data: Record<string, unknown>): boolean {
+  const legacy: Array<[string, string]> = [
+    ['disableModelInvocation', 'disable-model-invocation'],
+    ['modelInvocable', 'disable-model-invocation'],
+    ['userInvocable', 'user-invocable'],
+  ]
+  for (const [key] of legacy) {
+    if (Object.hasOwn(data, key)) return true
+  }
+  for (const key of ['disable-model-invocation', 'user-invocable']) {
+    if (!Object.hasOwn(data, key)) continue
+    if (!isFrontmatterBoolean(data[key])) return true
+  }
+  return false
+}
+
+/** 官方 frontmatter 布尔的接受集合（boolean / 1 / 0 / 字符串枚举）。 */
+function isFrontmatterBoolean(value: unknown): boolean {
+  if (typeof value === 'boolean') return true
+  if (value === 1 || value === '1' || value === 0 || value === '0') return true
+  if (typeof value === 'string') {
+    return ['true', 'yes', 'on', 'false', 'no', 'off'].includes(value.toLowerCase())
+  }
+  return false
 }
 
 function findClosingFence(raw: string, start: number): { start: number; bodyStart: number } | undefined {

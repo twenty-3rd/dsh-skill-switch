@@ -6,7 +6,7 @@
  * 一字不改，v1 手写出来的开关目录在新面板下要表现完全一致。
  */
 import { describe, expect, it } from 'vitest'
-import { mkdtemp, mkdir, readdir, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, readdir, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -25,6 +25,16 @@ import {
   writeSwitch,
   type SwitchState,
 } from '../src/switches.ts'
+
+/** 路径是否存在。 */
+async function pathExists(path: string): Promise<boolean> {
+  try {
+    await stat(path)
+    return true
+  } catch {
+    return false
+  }
+}
 
 /** 造一个临时目录，测试结束后删掉。 */
 async function scratch(prefix: string): Promise<string> {
@@ -243,16 +253,37 @@ describe('writeSwitch / clearSwitches（面板一键开关的落盘实现）', (
     await rm(base, { recursive: true, force: true })
   })
 
-  it('clearSwitches 清空两侧集合并删除空目录，缺目录时是 no-op', async () => {
+  it('clearSwitches 清空两侧集合、删掉空目录与开关根（回到 present:false 纯透传）', async () => {
     const base = await scratch('ss-clear-')
     expect(await clearSwitches(base, SWITCHES)).toEqual([])
     await writeSwitch(base, SWITCHES, 'review', true, 'deny')
     await writeSwitch(base, SWITCHES, 'api-design', true, 'deny')
     const removed = await clearSwitches(base, SWITCHES)
     expect(removed.length).toBe(2)
+    // 目录也要真的消失：fs.rm 对目录必须传 recursive，否则抛 EISDIR 被吞掉，
+    // readSwitchState 会永远报 present:true（早期 bug）。
+    expect(await pathExists(join(base, SWITCHES, 'off'))).toBe(false)
+    expect(await pathExists(join(base, SWITCHES))).toBe(false)
     const state = await readSwitchState(base, SWITCHES, 'deny')
-    expect(state.present).toBe(true)
+    expect(state.present).toBe(false)
     expect(state.off.size).toBe(0)
+    await rm(base, { recursive: true, force: true })
+  })
+
+  it('defaultMode=allow 且没有 mode 文件时，清空后必须回到纯透传（否则等于全隐藏）', async () => {
+    const base = await scratch('ss-clear-default-allow-')
+    const sw = join(base, SWITCHES)
+    await mkdir(join(sw, 'on'), { recursive: true })
+    await writeFile(join(sw, 'on', 'review'), '')
+    // 项目的 allow 来自配置，不是 mode 文件：includeMode 删不到任何文件。
+    expect((await readSwitchState(base, SWITCHES, 'allow')).mode).toBe('allow')
+
+    await clearSwitches(base, SWITCHES, { includeMode: true })
+    const after = await readSwitchState(base, SWITCHES, 'allow')
+    expect(after.present).toBe(false)
+    // present:false = 纯透传 = 全部可见，而不是"白名单空集 = 全隐藏"。
+    const catalog = [{ name: 'review' }, { name: 'api-design' }]
+    expect(filterSkills(after, catalog).map(s => s.name)).toEqual(['review', 'api-design'])
     await rm(base, { recursive: true, force: true })
   })
 

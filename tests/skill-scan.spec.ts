@@ -287,3 +287,54 @@ describe('readSkillRaw 的读取口径', () => {
     await rm(root, { recursive: true, force: true })
   })
 })
+
+describe('与官方 provider 的判定口径对齐（回归）', () => {
+  it('数字型 name/description 官方不认：必须报 missing，而不是显示成正常', async () => {
+    const root = await makeRoot({
+      // 官方 stringField 只接受非空 string，数字会被当成"字段不存在"。
+      'num-desc/SKILL.md': '---\nname: num-desc\ndescription: 123\n---\n正文\n',
+      '123/SKILL.md': '---\nname: 123\ndescription: d\n---\n正文\n',
+    })
+    const skills = await scanSkillRoot(rootSpec(root))
+    const numDesc = skills.find(s => s.name === 'num-desc')
+    expect(numDesc?.issues).toEqual(['missing-description'])
+    // 名字回退到目录名（目录名 123 恰好是合法 kebab-case），并报 missing-name。
+    const numName = skills.find(s => s.entryName === '123')
+    expect(numName?.issues).toEqual(['missing-name'])
+    expect(numName?.nameSource).toBe('entry')
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it('纯空白的 description 官方**接受**：不能误报未生效', async () => {
+    const root = await makeRoot({ 'blank-desc/SKILL.md': '---\nname: blank-desc\ndescription: "   "\n---\n正文\n' })
+    const [skill] = await scanSkillRoot(rootSpec(root))
+    expect(skill?.issues).toEqual([])
+    expect(skill?.descriptionSource).toBe('frontmatter')
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it('invocation 字段非法（含遗留键）官方会丢掉整条：必须报 invalid-invocation', async () => {
+    const root = await makeRoot({
+      'legacy-key/SKILL.md': '---\nname: legacy-key\ndescription: d\ndisableModelInvocation: true\n---\n正文\n',
+      'bad-bool/SKILL.md': '---\nname: bad-bool\ndescription: d\nuser-invocable: maybe\n---\n正文\n',
+      'ok-bool/SKILL.md': '---\nname: ok-bool\ndescription: d\ndisable-model-invocation: true\nuser-invocable: "no"\n---\n正文\n',
+    })
+    const skills = await scanSkillRoot(rootSpec(root))
+    expect(skills.find(s => s.name === 'legacy-key')?.issues).toEqual(['invalid-invocation'])
+    expect(skills.find(s => s.name === 'bad-bool')?.issues).toEqual(['invalid-invocation'])
+    // 合法的布尔形状（含 1/0、true/false/yes/no/on/off）不受影响。
+    expect(skills.find(s => s.name === 'ok-bool')?.issues).toEqual([])
+    await rm(root, { recursive: true, force: true })
+  })
+})
+
+describe('repairFrontmatter：不吞正文（回归）', () => {
+  it('开头是 --- 但没有收尾围栏：只把新 frontmatter 插到最前，原文一字不丢', () => {
+    const raw = '---\nname: [broken\nimportant: 正文不能被吃掉\n'
+    const next = repairFrontmatter(raw, { name: 'rescued', description: '补上的描述' })
+    expect(next.startsWith('---\nname: rescued\n')).toBe(true)
+    // 原文完整保留在后面。
+    expect(next).toContain('important: 正文不能被吃掉')
+    expect(next).toContain('name: [broken')
+  })
+})

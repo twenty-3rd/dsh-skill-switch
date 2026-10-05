@@ -18,9 +18,24 @@ import { api, SkillSwitchApiError } from './api.ts'
 import { t } from './locales.ts'
 import css from './SkillSwitchPanel.module.css'
 
-/** 把 wire 失败折成一行可读消息。 */
+/**
+ * 把 wire 失败折成一行**本地化**消息。
+ *
+ * host 侧的 error.message 是机器/开发者面的（英文细节），直接显示会让中文界面
+ * 冒出英文、英文界面冒出中文。这里按 wire code 出本地化文案，只有未知 code
+ * 才退回原始消息。
+ */
 function messageOf(error: unknown): string {
-  if (error instanceof SkillSwitchApiError) return `${t('wireError')}: ${error.message}`
+  if (error instanceof SkillSwitchApiError) {
+    switch (error.code) {
+      case 'bad-request': return t('errBadRequest')
+      case 'not-found': return t('errNotFound')
+      case 'protected': return t('errProtected')
+      case 'forbidden': return t('errForbidden')
+      case 'network': return t('errNetwork')
+      default: return `${t('wireError')}: ${error.message}`
+    }
+  }
   return error instanceof Error ? error.message : String(error)
 }
 
@@ -47,6 +62,7 @@ export function issueLabel(issue: SkillIssue): string {
     case 'invalid-name': return t('issueInvalidName')
     case 'missing-description': return t('issueMissingDescription')
     case 'invalid-entry-name': return t('issueInvalidEntryName')
+    case 'invalid-invocation': return t('issueInvalidInvocation')
     default: return issue
   }
 }
@@ -136,7 +152,10 @@ export function SkillSwitchBody(props: { store: PanelStore; scope: PanelScope })
     try {
       const next = await action()
       setData(next)
-      setNotice(done(next))
+      // 部分副本被跳过（受保护根 / 删除失败）时必须说出来，否则用户会以为
+      // "删干净了"而其实 bundled 等位置的副本还在。
+      const skipped = next.lastAction?.skipped?.length ?? 0
+      setNotice(skipped > 0 ? `${done(next)} · ${t('skippedOf', { count: skipped })}` : done(next))
       setMenu(null)
     } catch (cause) {
       setError(messageOf(cause))
@@ -256,6 +275,7 @@ export function SkillSwitchBody(props: { store: PanelStore; scope: PanelScope })
 
       {error !== null && <div className={css.error}>{error}</div>}
       {notice !== null && <div className={css.notice}>{notice}</div>}
+      {data?.catalogError === true && <div className={css.error}>{t('catalogUnavailable')}</div>}
 
       <div className={css.body}>
         {loading && data === null && <p className={css.status}>{t('loading')}</p>}
@@ -339,6 +359,10 @@ export function SkillCard(props: SkillCardProps) {
   const hasIssues = row.issues.length > 0
   const canRepair = hasIssues && row.descriptionSource !== 'none' && row.copies.some(copy => copy.deletable)
   const libraryOnly = row.copies.length > 0 && row.copies.every(copy => !copy.live)
+  // 磁盘上有、注册表里没有、又看不出 frontmatter 问题：只能如实说"原因未知"
+  // （可能是 runtime 目录读取失败，也可能官方 provider 还有本插件没建模的拒绝条件）。
+  const unknownState = !row.inCatalog && !libraryOnly && !hasIssues
+  const broken = hasIssues || unknownState
 
   return (
     <div
@@ -350,7 +374,7 @@ export function SkillCard(props: SkillCardProps) {
           <span className={css.skillName} title={row.name}>{row.name}</span>
           <span className={`${css.badge} ${css.badgeSource}`}>{sourceLabel(row.source)}</span>
           {row.blocked && <span className={`${css.badge} ${css.badgeBlocked}`}>{t('badgeBlocked')}</span>}
-          {hasIssues && <span className={`${css.badge} ${css.badgeBroken}`}>{t('badgeBroken')}</span>}
+          {broken && <span className={`${css.badge} ${css.badgeBroken}`}>{t('badgeBroken')}</span>}
           {libraryOnly && <span className={css.badge}>{t('badgeUnassigned')}</span>}
           {row.source === 'bundled' && <span className={css.badge}>{t('badgeBundled')}</span>}
           {row.form === 'virtual' && <span className={css.badge}>{t('badgeVirtual')}</span>}
@@ -358,9 +382,10 @@ export function SkillCard(props: SkillCardProps) {
         <span className={css.skillDesc} title={row.description}>
           {row.description !== '' ? row.description : '—'}
         </span>
-        {(hasIssues || row.nameSource === 'entry' || row.descriptionSource === 'body' || row.copies.length > 1 || !row.blockable) && (
+        {(broken || row.nameSource === 'entry' || row.descriptionSource === 'body' || row.copies.length > 1 || !row.blockable) && (
           <span className={css.skillMeta}>
             {hasIssues && <span className={css.metaWarn}>{row.issues.map(issueLabel).join(' · ')}</span>}
+            {unknownState && <span className={css.metaWarn}>{t('issueUnknown')}</span>}
             {row.nameSource === 'entry' && <span>{t('nameFromEntry')}</span>}
             {row.descriptionSource === 'body' && <span>{t('descFromBody')}</span>}
             {row.copies.length > 1 && <span>{t('copiesOf', { count: row.copies.length })}</span>}
@@ -399,7 +424,10 @@ export function SkillCard(props: SkillCardProps) {
               <p className={css.menuText}>{t('deleteConfirm')}</p>
               <ul className={css.menuList}>
                 {row.copies.map(copy => (
-                  <li key={copy.path}>{copy.form === 'bundle' ? copy.directory : copy.path}</li>
+                  <li key={copy.path}>
+                    {copy.form === 'bundle' ? copy.directory : copy.path}
+                    {copy.deletable ? '' : ` — ${t('protectedCopy')}`}
+                  </li>
                 ))}
               </ul>
               <div className={css.menuActions}>

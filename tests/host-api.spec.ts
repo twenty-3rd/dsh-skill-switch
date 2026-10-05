@@ -399,6 +399,47 @@ describe('真实组合：官方注册表 + WebServer + /skill-switch API', () =>
     expect((await raw(port, 'GET', '/skill-switch/api/panel.load')).status).toBe(405)
   })
 
+  it('原型链上的名字不算合法方法（constructor / toString / valueOf -> 404）', async () => {
+    for (const probe of ['constructor', 'toString', 'valueOf', 'hasOwnProperty', '__proto__']) {
+      const result = await raw(port, 'POST', `/skill-switch/api/${probe}`, { sessionId: 'session-1' })
+      expect(result.status, `${probe} 必须被当成未知方法`).toBe(404)
+      expect(result.body?.error?.code).toBe('not-found')
+    }
+  })
+
+  it('未知会话：payload 里的 cwd 一律不参与路径推导', async () => {
+    const injected = join(scratch, 'attacker-controlled')
+    const view = await post<PanelView>(port, 'panel.load', { sessionId: 'not-a-real-session', cwd: injected })
+    expect(view.cwd).toBe(process.cwd())
+    expect(view.projectRoot).not.toContain('attacker-controlled')
+  })
+
+  it('被屏蔽的"虚拟 skill"仍然留在面板里（未过滤目录），否则用户再也无法恢复它', async () => {
+    await useProject('virtual-blocked')
+    const unregister = app.skills.register({
+      name: 'rt-only',
+      description: '运行时注册的',
+      source: 'runtime',
+      content: '正文',
+    })
+    try {
+      const blocked = await post<PanelView>(port, 'switches.set', { sessionId: 'session-1', name: 'rt-only', blocked: true })
+      expect(rowOf(blocked, 'rt-only').blocked).toBe(true)
+      // 关键：它磁盘上没有任何副本，面板只能靠"未过滤的 runtime 目录"知道它还在。
+      const reloaded = await post<PanelView>(port, 'panel.load', { sessionId: 'session-1' })
+      const row = rowOf(reloaded, 'rt-only')
+      expect(row.form).toBe('virtual')
+      expect(row.inCatalog).toBe(true)
+      expect(row.blocked).toBe(true)
+
+      // 能恢复。
+      const restored = await post<PanelView>(port, 'switches.set', { sessionId: 'session-1', name: 'rt-only', blocked: false })
+      expect(rowOf(restored, 'rt-only').blocked).toBe(false)
+    } finally {
+      unregister()
+    }
+  })
+
   it('跨站请求被栅栏拦住 -> 403', async () => {
     const result = await raw(port, 'POST', '/skill-switch/api/panel.load', { sessionId: 'session-1' }, {
       'sec-fetch-site': 'cross-site',
@@ -411,5 +452,65 @@ describe('真实组合：官方注册表 + WebServer + /skill-switch API', () =>
     const view = await post<PanelView>(port, 'panel.load', { sessionId: 'someone-else' })
     expect(typeof view.cwd).toBe('string')
     expect(view.cwd.length).toBeGreaterThan(0)
+  })
+})
+
+/**
+ * 包装的生命周期验收：用一个独立的真实 cordis Context（真实 SkillRegistry +
+ * 本插件）说明 "fiber dispose 之后包装确实被摘掉"。
+ *
+ * 单独开一个 describe 是因为这里要把插件卸载掉，不能污染上面的共享实例。
+ */
+describe('真实 cordis：fiber dispose 之后 ctx.skills 恢复原样', () => {
+  it('卸载后 off/<name> 不再隐藏，get 也重新可加载；双包装保护在整个生命周期内有效', async () => {
+    const scratchDir = await mkdtemp(join(tmpdir(), 'ss-dispose-'))
+    const project = join(scratchDir, 'proj')
+    await mkdir(join(project, '.git'), { recursive: true })
+    const dir = join(project, '.dsh', 'skills', 'leaky')
+    await mkdir(dir, { recursive: true })
+    await writeFile(join(dir, 'SKILL.md'), '---\nname: leaky\ndescription: d\n---\n')
+    await mkdir(join(project, '.dsh', 'skill-switches', 'off'), { recursive: true })
+    await writeFile(join(project, '.dsh', 'skill-switches', 'off', 'leaky'), '')
+
+    const app2 = new Context()
+    app2.provide('sessions', { get: (id: string) => (id === 's1' ? { header: { cwd: project } } : undefined) })
+    app2.provide('loader', { entries: () => [] })
+    await app2.plugin(SkillRegistry)
+    await app2.plugin(skillFs as unknown as Parameters<typeof app2.plugin>[0], {
+      includeDefaultRoots: true,
+      dshHome: scratchDir,
+      agentsHome: join(scratchDir, 'agents'),
+      watch: false,
+    })
+
+    const pluginObject: unknown = { name, inject, apply }
+    const fiber = app2.plugin(pluginObject as Parameters<typeof app2.plugin>[0], {
+      dshHome: scratchDir,
+      agentsHome: join(scratchDir, 'agents'),
+      bundledSkillDir: join(scratchDir, 'bundled'),
+      cacheTtlMs: 0,
+    }) as unknown as { dispose(): Promise<void> }
+    await fiber
+
+    // 包装期间：开关生效。
+    expect((await app2.skills.list({ cwd: project })).map(s => s.name)).toEqual([])
+    expect(await app2.skills.get('leaky', { cwd: project })).toBeUndefined()
+
+    // 重复 apply 被拒绝（WRAP_TAG 在生命周期内必须保持为真）。
+    const tag = Symbol.for('dsh-skill-switch.wrapped') as unknown as string
+    expect((app2.skills as unknown as Record<string | symbol, unknown>)[tag]).toBe(true)
+    const second = app2.plugin(pluginObject as Parameters<typeof app2.plugin>[0], {}) as unknown as { dispose(): Promise<void> }
+    await second
+    expect((app2.skills as unknown as Record<string | symbol, unknown>)[tag]).toBe(true)
+
+    // 卸载：开关文件还在磁盘上，但包装必须被摘掉。
+    await fiber.dispose()
+    await second.dispose()
+    expect((app2.skills as unknown as Record<string | symbol, unknown>)[tag]).toBeUndefined()
+    expect((await app2.skills.list({ cwd: project })).map(s => s.name)).toEqual(['leaky'])
+    const loaded = await app2.skills.get('leaky', { cwd: project }) as { name: string } | undefined
+    expect(loaded?.name).toBe('leaky')
+
+    await rm(scratchDir, { recursive: true, force: true })
   })
 })

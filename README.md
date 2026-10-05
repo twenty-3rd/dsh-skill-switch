@@ -5,7 +5,7 @@ DSH（DeepSeek Harness）的**项目级 skill 开关 + 全局删除**插件。�
 
 - **一键开关**：某条 skill 在本项目里是否可见，点一下就生效（写/删
   `<项目根>/.dsh/skill-switches/` 下的开关文件）。
-- **全局删除**：把一条 skill 在所有已知根里的副本一次删干净，删完面板与
+- **删除全部副本**：把一条 skill 在所有已知根里的副本一次删干净，删完面板与
   runtime 目录里都不再出现。
 - **看得见"未生效"的 skill**：缺 `name`/`description`、YAML 坏掉的 skill 在
   官方 provider 眼里会被整条丢弃（只留一条 warn 日志）；本插件仍然把它们列出来、
@@ -40,7 +40,7 @@ dsh-skills-manager，它排在 Skills 管理器之后）。面板由三部分组
 - **卡片左侧**：名字、来源徽标、状态徽标、描述，以及一行诊断
   （未生效原因、名字取自目录名、副本数量、名字不合法无法开关等）。
 - **卡片右侧**：一个纯 CSS 开关键（点一下就是一次切换）+ 「操作」下拉菜单。
-- **操作菜单**：「补齐 frontmatter」（仅未生效项）与「删除（全局）」；两者都有
+- **操作菜单**：「补齐 frontmatter」（仅未生效项）与「删除（全部副本）」；两者都有
   二次确认，且会把将受影响的文件路径一条条列出来。
 
 ## 安装
@@ -99,7 +99,7 @@ rm -rf .dsh/skill-switches                     # 全部恢复
 
 ## 功能二：全局删除
 
-「删除（全局）」会把该名字在**每一处已知根**里的副本都删掉：
+「删除（全部副本）」会把该名字在**每一处已知根**里的副本都删掉：
 
 | 根 | 来源 id | 是否可删 |
 |----|---------|----------|
@@ -112,11 +112,21 @@ rm -rf .dsh/skill-switches                     # 全部恢复
 | `$DSH_HOME/skill-library` | `library` | ✅（dsh-skills-manager 的规范副本） |
 | 其它 provider 注册的虚拟 skill | `runtime` / 任意 | ❌ 磁盘上没有可删的东西 |
 
+**范围要说清楚**：本插件扫描的根由"当前会话 cwd 的项目根 + 用户级/共享/内置/库"
+组成，所以**别的项目的项目级副本（`<另一个项目>/.dsh/skills`）不在扫描范围内**——
+面板上按的是「删除（全部副本）」而不是「删除（全局）」，确认框里也会写明这一点。
+要在别的项目里也消失，去那个项目的会话里再删一次（或直接删那个目录）。
+
 安全边界：
 
 - 路径**全部由服务端扫描推导**，客户端只能传名字；每个待删路径都要通过
   "严格位于所属根之内、且不是根本身"的校验，越界直接 `403 forbidden`。
 - 一次删除里单点失败不会拖垮其它副本；全部副本都不存在时报 `404`。
+- **请求里的 `cwd` 只在宿主确实认识该 session、且它的 cwd 还没 hydrate 时**才被
+  当作兜底；sessionId 不认识时一律用宿主进程 cwd。否则任何调用方都能拿一个不存在的
+  sessionId 加任意绝对路径，让写入/删除发生在别处。
+- 方法派发走 `Object.hasOwn`：`constructor` / `toString` 这类原型成员会被当成
+  "未知方法"返回 404，不会命中原型链。
 - 删除成功后会顺手清掉本项目里该名字的开关文件，避免"删了再装回来还带着旧屏蔽"。
 
 ## 注意点：让"未生效"的 skill 可见
@@ -134,6 +144,17 @@ rm -rf .dsh/skill-switches                     # 全部恢复
 | 无 frontmatter | 丢弃 | 列出，正文照常作为描述来源 |
 | YAML 解析失败 | 丢弃 | 列出，且仍能从围栏之后取正文 |
 | 名字不是 kebab-case | 丢弃 | 列出，标 `invalid-name`，并禁用开关（写不了开关文件） |
+| `name`/`description` 不是字符串（如数字） | 丢弃 | 列出，按官方口径报 `missing-name` / `missing-description` |
+| invocation 字段非法或用了遗留键 | 丢弃 | 列出，标 `invalid-invocation` |
+
+判定口径是**逐字对齐**官方 `parseSkillFile()` 的：只有非空 `string` 才算字段存在
+（不 trim、不把数字转字符串），`disable-model-invocation` / `user-invocable` 只认
+boolean / 1 / 0 / true / false / yes / no / on / off，出现 `disableModelInvocation`
+一类的遗留键即视为整条非法。所以面板说的"生效 / 未生效"和 runtime 的真实行为一致。
+
+如果某条 skill 磁盘上有、注册表里没有、frontmatter 又看不出问题，面板会如实标
+「未生效 · 原因未知」；runtime 目录整个读不出来时另有一条横幅提示
+「生效状态不可信」。宁可说"不知道"，也不把不确定说成"正常"。
 
 面板把这些问题显示成「未生效」徽标 + 具体原因，并提供「补齐 frontmatter」：
 只改 frontmatter（没有就插到文首，坏的整段替换），正文一字不动。修复后
@@ -173,8 +194,13 @@ client 半体 (lib/client.js)
 
 - 开关状态缓存采用 **mtime 指纹 + TTL 双条件**：通常即时失效（现代文件系统
   mtime 纳秒级），粗粒度 mtime 的文件系统由 TTL 兜底（默认 1 秒）。
-- 所有文件系统错误降级为透传 + warn 日志，绝不影响 skill 系统本身；插件卸载
-  （fiber dispose）自动摘除包装，恢复服务原型方法；HMR 重复加载有防双包装保护。
+- 所有文件系统错误降级为透传 + warn 日志，绝不影响 skill 系统本身。
+- 卸载（fiber dispose）真的会摘除包装、恢复原始方法：teardown 是登记成 cordis
+  的 disposer（`ctx.effect(() => () => {…})`），不是写在 effect body 里——后者会在
+  安装瞬间就"卸载"并永远泄漏包装。恢复按包装前捕获的函数值赋值，不依赖
+  `===` 比较（cordis 每次读取服务属性可能给出不同的绑定代理）。
+  `WRAP_TAG` 只在卸载时清，所以 HMR/重复加载的双重包装保护在整个生命周期内有效。
+  真实 cordis 的回归用例覆盖了"dispose 之后 off/<name> 不再隐藏"。
 - 路由栅栏与 `/api` 网关同规则（Host loopback 或 connection 行的 trustedHosts，
   跨站标记拒绝），是 DNS-rebinding/CSRF 防御，不是认证。
 - 面板请求走**未包装**的注册表，所以被屏蔽的 skill 仍然带着
@@ -190,7 +216,7 @@ client 半体 (lib/client.js)
 ## 测试
 
 ```sh
-pnpm test        # 先 pnpm build 再 vitest：118 项（纯逻辑 + 真实 cordis 组合 + 客户端接线/渲染 + 产物加载）
+pnpm test        # 先 pnpm build 再 vitest：135 项（纯逻辑 + 真实 cordis 组合 + 客户端接线/渲染 + 产物加载）
 pnpm test:unit   # 只跑测试（用现有 lib/，改过 src 请先 build）
 pnpm typecheck   # tsc --noEmit
 pnpm build       # lib/index.js + lib/client.js + lib/types
@@ -213,6 +239,10 @@ frontmatter 的 skill 确实在注册表里没有而在面板里有；删除后�
   下一次目录重建才跟上。
 - `skill-library` 根**不参与** runtime 目录（官方 provider 不扫它），所以库里的
   skill 会以「未分配」出现；它仍然会被"全局删除"一并清掉，这正是"删干净"的一部分。
+- 删除与补齐都走库语义：`fs.rm` 对符号链接只摘链接本身（不穿透删目标内容），
+  `writeFileAtomic` 是同目录临时文件 + rename（替换链接本身）。根内的链接不会
+  造成越界删除，这一点有专门的测试固定住。
+- 「删除（全部副本）」不覆盖**其它项目**的项目级副本（见上文"范围要说清楚"）。
 - 需要 host 重启后插件才初次加载；之后的开关变化无需再重启。
 
 ## License

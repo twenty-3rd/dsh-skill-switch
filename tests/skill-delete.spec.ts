@@ -6,9 +6,9 @@
  * 这件事本身要真的发生（目录/文件都不再存在）。
  */
 import { describe, expect, it } from 'vitest'
-import { access, mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
+import { access, mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { assertWithinRoot, deleteSkillCopies, type DeleteTarget } from '../src/skill-delete.ts'
 import { SwitchError } from '../src/wire.ts'
 
@@ -142,5 +142,48 @@ describe('deleteSkillCopies', () => {
     expect((await deleteSkillCopies([target])).removed).toHaveLength(1)
     await expect(deleteSkillCopies([target])).rejects.toMatchObject({ code: 'not-found' })
     await rm(user, { recursive: true, force: true })
+  })
+})
+
+describe('符号链接（把安全结论固定下来）', () => {
+  it('根内指向根外的链接：rm 只摘链接本身，绝不穿透删掉目标内容', async () => {
+    const root = await makeRoot()
+    const outside = await makeRoot()
+    await mkdir(join(outside, 'precious'), { recursive: true })
+    await writeFile(join(outside, 'precious', 'SKILL.md'), '---\nname: precious\ndescription: d\n---\n')
+    await writeFile(join(outside, 'precious', 'IMPORTANT.txt'), '不能删')
+    const link = join(root, 'linked')
+    await symlink(join(outside, 'precious'), link, 'dir')
+
+    const outcome = await deleteSkillCopies([
+      { path: join(link, 'SKILL.md'), directory: link, form: 'bundle', rootPath: root, source: 'user-dsh', deletable: true },
+    ])
+    expect(outcome.removed).toEqual([link])
+    // 链接没了，但目标目录里的东西一个都不能少。
+    expect(await exists(link)).toBe(false)
+    expect(await exists(join(outside, 'precious', 'SKILL.md'))).toBe(true)
+    expect(await readFile(join(outside, 'precious', 'IMPORTANT.txt'), 'utf8')).toBe('不能删')
+    await rm(root, { recursive: true, force: true })
+    await rm(outside, { recursive: true, force: true })
+  })
+
+  it('指向根外的 `..` 形态目标（真实形态而非 process.cwd 相对）同样被拒', async () => {
+    const root = await makeRoot()
+    const outside = await makeRoot()
+    await mkdir(join(outside, 'keep'), { recursive: true })
+    await writeFile(join(outside, 'keep', 'SKILL.md'), 'x')
+    await expect(deleteSkillCopies([
+      {
+        path: join(root, '..', basename(outside), 'keep', 'SKILL.md'),
+        directory: join(root, '..', basename(outside), 'keep'),
+        form: 'bundle',
+        rootPath: root,
+        source: 'user-dsh',
+        deletable: true,
+      },
+    ])).rejects.toMatchObject({ code: 'forbidden', status: 403 })
+    expect(await exists(join(outside, 'keep'))).toBe(true)
+    await rm(root, { recursive: true, force: true })
+    await rm(outside, { recursive: true, force: true })
   })
 })
