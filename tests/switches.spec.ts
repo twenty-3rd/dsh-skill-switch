@@ -255,4 +255,36 @@ describe('writeSwitch / clearSwitches（面板一键开关的落盘实现）', (
     expect(state.off.size).toBe(0)
     await rm(base, { recursive: true, force: true })
   })
+
+  it('clearSwitches 默认保留 mode 文件（mode 是项目设置，不是某条 skill 的开关）', async () => {
+    const base = await scratch('ss-clear-mode-')
+    const sw = join(base, SWITCHES)
+    await mkdir(join(sw, 'on'), { recursive: true })
+    await writeFile(join(sw, 'mode'), 'allow\n')
+    await writeFile(join(sw, 'on', 'review'), '')
+    const removed = await clearSwitches(base, SWITCHES)
+    expect(removed).toEqual([join(sw, 'on', 'review')])
+    expect((await readSwitchState(base, SWITCHES, 'deny')).mode).toBe('allow')
+    await rm(base, { recursive: true, force: true })
+  })
+
+  it('白名单模式下 includeMode 必须删掉 mode，否则清空 on/ 等于"全部隐藏"', async () => {
+    const base = await scratch('ss-clear-allow-')
+    const sw = join(base, SWITCHES)
+    await mkdir(join(sw, 'on'), { recursive: true })
+    await writeFile(join(sw, 'mode'), 'allow\n')
+    await writeFile(join(sw, 'on', 'review'), '')
+
+    const catalog = [{ name: 'review' }, { name: 'api-design' }]
+    // 清空前的语义：只有白名单里的 review 可见。
+    expect(filterSkills(await readSwitchState(base, SWITCHES, 'deny'), catalog).map(s => s.name)).toEqual(['review'])
+
+    const removed = await clearSwitches(base, SWITCHES, { includeMode: true })
+    expect(removed).toContain(join(sw, 'mode'))
+    const after = await readSwitchState(base, SWITCHES, 'deny')
+    expect(after.mode).toBe('deny')
+    // 关键：不是"全部隐藏"，而是恢复默认（全部可见）。
+    expect(filterSkills(after, catalog).map(s => s.name)).toEqual(['review', 'api-design'])
+    await rm(base, { recursive: true, force: true })
+  })
 })

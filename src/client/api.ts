@@ -78,6 +78,8 @@ export interface ActionReport {
   removed?: string[]
   skipped?: Array<{ path: string; source: string; reason: string; message?: string }>
   repaired?: string[]
+  /** reset 是否顺带移除了 mode 文件（白名单模式下的必要动作）。 */
+  modeReset?: boolean
 }
 
 /** 面板一次加载的完整数据。 */

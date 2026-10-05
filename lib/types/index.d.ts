@@ -163,6 +163,8 @@ export interface ActionReport {
     }>;
     /** 修复过的 skill 文件路径。 */
     repaired?: string[];
+    /** reset 是否顺带移除了 mode 文件（白名单模式下的必要动作）。 */
+    modeReset?: boolean;
 }
 /** 面板 API 的上下文。 */
 interface ApiScope {

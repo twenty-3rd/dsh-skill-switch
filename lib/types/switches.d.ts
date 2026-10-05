@@ -122,9 +122,25 @@ export declare function switchesPath(projectRoot: string, switchesDir: string): 
  * @returns 写入/删除的绝对路径列表，供调用方回报。
  */
 export declare function writeSwitch(projectRoot: string, switchesDir: string, name: string, blocked: boolean, mode: SwitchMode): Promise<string[]>;
+/** `clearSwitches` 的选项。 */
+export interface ClearSwitchesOptions {
+    /**
+     * 是否连 `mode` 文件一起删掉。
+     *
+     * 这是 allow（白名单）模式的必要动作：清空 `on/` 之后白名单变成空集，
+     * `mode: allow` 的含义就是"什么都不放行"，会把整个 skill 目录清空——
+     * 与"恢复默认可见性"完全相反。所以面板在白名单模式下恢复全部时，
+     * 必须把 `mode` 文件一起移除，让项目回到 defaultMode（默认 deny）。
+     */
+    includeMode?: boolean;
+}
 /**
  * 清空一个项目的全部开关：删除 off/ 与 on/ 两个集合目录里的所有条目，
- * 并把两侧空目录一并移除。项目没有开关目录时是 no-op。
+ * 并把两侧空目录一并移除；`includeMode` 为真时连 mode 文件一起删。
+ * 项目没有开关目录时是 no-op。
+ * @param projectRoot - 项目根。
+ * @param switchesDir - 相对项目根的开关目录。
+ * @param options - 见 {@link ClearSwitchesOptions}。
  * @returns 被删除的绝对路径列表。
  */
-export declare function clearSwitches(projectRoot: string, switchesDir: string): Promise<string[]>;
+export declare function clearSwitches(projectRoot: string, switchesDir: string, options?: ClearSwitchesOptions): Promise<string[]>;

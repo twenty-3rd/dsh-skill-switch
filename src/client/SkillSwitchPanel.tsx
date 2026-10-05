@@ -242,7 +242,7 @@ export function SkillSwitchBody(props: { store: PanelStore; scope: PanelScope })
 
       {confirmReset && (
         <div className={css.notice}>
-          {t('resetConfirm')}
+          {data?.mode === 'allow' ? t('resetConfirmAllow') : t('resetConfirm')}
           <div className={css.menuActions}>
             <button type="button" className={`${css.ghostButton} ${css.dangerButton}`} disabled={busyGlobal} onClick={() => { void resetAll() }}>
               {busyGlobal ? '…' : t('confirm')}

@@ -83,6 +83,10 @@ dsh plugin --profile desktop add dsh-skill-switch
 
 两种情况下都会顺手清掉另一侧的同名残留，避免手工切换模式后语义漂移。
 
+面板右上角的「恢复本项全部」清空 `off/` 与 `on/`；如果项目当前是 `allow`
+（白名单）模式，它会**同时移除 `mode` 文件**——只清 `on/` 会让白名单变成空集，
+等于把整个 skill 目录清空，与"恢复默认可见性"正好相反。确认框里会写明这一点。
+
 仍然可以完全不用界面，直接建文件（与 v1 完全一致）：
 
 ```sh
@@ -186,7 +190,7 @@ client 半体 (lib/client.js)
 ## 测试
 
 ```sh
-pnpm test        # 先 pnpm build 再 vitest：115 项（纯逻辑 + 真实 cordis 组合 + 客户端接线/渲染 + 产物加载）
+pnpm test        # 先 pnpm build 再 vitest：118 项（纯逻辑 + 真实 cordis 组合 + 客户端接线/渲染 + 产物加载）
 pnpm test:unit   # 只跑测试（用现有 lib/，改过 src 请先 build）
 pnpm typecheck   # tsc --noEmit
 pnpm build       # lib/index.js + lib/client.js + lib/types

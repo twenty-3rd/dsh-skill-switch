@@ -358,6 +358,29 @@ describe('真实组合：官方注册表 + WebServer + /skill-switch API', () =>
     await expect(readFile(join(switches, 'on', 'whitelisted'), 'utf8')).rejects.toThrow()
   })
 
+  it('白名单模式下"恢复全部"连 mode 一起清：不能让目录变成空集', async () => {
+    const project = await useProject('allow-reset')
+    await writeProjectSkill(project, 'keep-a', '---\nname: keep-a\ndescription: d\n---\n')
+    await writeProjectSkill(project, 'keep-b', '---\nname: keep-b\ndescription: d\n---\n')
+    const switches = join(project, '.dsh', 'skill-switches')
+    await mkdir(join(switches, 'on'), { recursive: true })
+    await writeFile(join(switches, 'mode'), 'allow\n')
+    await writeFile(join(switches, 'on', 'keep-a'), '')
+
+    // 白名单生效时只有 keep-a 可见。
+    expect((await app.skills.list({ cwd: project })).map(s => s.name)).toEqual(['keep-a'])
+
+    const view = await post<PanelView>(port, 'switches.reset', { sessionId: 'session-1' })
+    expect(view.lastAction?.modeReset).toBe(true)
+    expect(view.mode).toBe('deny')
+    await expect(readFile(join(switches, 'mode'), 'utf8')).rejects.toThrow()
+
+    // 关键回归：恢复后是"都回来"，不是"全没了"。
+    const names = (await app.skills.list({ cwd: project })).map(s => s.name)
+    expect(names).toContain('keep-a')
+    expect(names).toContain('keep-b')
+  })
+
   it('非法名字的开关请求 -> bad-request', async () => {
     await useProject('bad-name')
     const result = await raw(port, 'POST', '/skill-switch/api/switches.set', { sessionId: 'session-1', name: 'Not_Kebab', blocked: true })

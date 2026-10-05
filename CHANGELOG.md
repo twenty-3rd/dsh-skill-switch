@@ -20,7 +20,8 @@
 - **「未生效」可见 + 一键补齐 frontmatter**：官方 provider 会丢弃缺
   `name`/`description`、YAML 坏掉、名字不合法的 skill；本插件按相同的根与 rank
   扫描磁盘并容错解析，把它们列出来、标出原因，并能只改 frontmatter 地把它们修好。
-- **`switches.reset`**：一键清空本项目全部开关。
+- **`switches.reset`**：一键清空本项目全部开关；白名单（`allow`）模式下会
+  同时移除 `mode` 文件，否则"清空 `on/`"等于把整个 skill 目录清空。
 - 新的 host API：`/skill-switch/api/{panel.load,switches.set,switches.reset,skills.delete,skills.repair}`，
   与 `/api` 网关同规则的浏览器信任栅栏。
 
@@ -28,7 +29,7 @@
 
 - 源码从纯 JS（JSDoc）改为 TypeScript；构建产物 `lib/index.js`（ESM node）+
   `lib/client.js`（浏览器 CJS 闭包工厂）+ `lib/types/**/*.d.ts`。
-- 测试从 `node --test` 迁到 vitest，并从 19 个单测扩展到 **115 项**（含真实 cordis
+- 测试从 `node --test` 迁到 vitest，并从 19 个单测扩展到 **118 项**（含真实 cordis
   组合集成测试与客户端接线/SSR 渲染测试）。v1 的每一条开关语义都有对应回归用例。
 - 新的配置项：`dshHome`、`agentsHome`、`customSkillDirs`、`bundledSkillDir`、
   `allowSharedRootWrites`（默认 `true`；置 `false` 可保持 `~/.agents/skills` 只读）。

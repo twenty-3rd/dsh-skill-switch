@@ -13,6 +13,7 @@ export declare const zh: {
     readonly searchPlaceholder: "搜索名字或描述…";
     readonly resetAll: "恢复本项全部";
     readonly resetConfirm: "清空本项目所有开关文件？所有 skill 恢复默认可见性。";
+    readonly resetConfirmAllow: "本项目是白名单模式（mode=allow）：只清空 on/ 会让白名单变成空集、所有 skill 全部消失。确认会同时移除 mode 文件，让项目回到默认可见性。";
     readonly loading: "加载中…";
     readonly loadFailed: "加载失败";
     readonly emptyAll: "这个项目里还没有发现任何 skill";
@@ -76,6 +77,7 @@ export declare const dictionaries: {
         readonly searchPlaceholder: "搜索名字或描述…";
         readonly resetAll: "恢复本项全部";
         readonly resetConfirm: "清空本项目所有开关文件？所有 skill 恢复默认可见性。";
+        readonly resetConfirmAllow: "本项目是白名单模式（mode=allow）：只清空 on/ 会让白名单变成空集、所有 skill 全部消失。确认会同时移除 mode 文件，让项目回到默认可见性。";
         readonly loading: "加载中…";
         readonly loadFailed: "加载失败";
         readonly emptyAll: "这个项目里还没有发现任何 skill";
@@ -126,7 +128,7 @@ export declare const dictionaries: {
         readonly wireError: "请求失败";
         readonly rootMissing: "根不存在";
     };
-    en: Record<"delete" | "repair" | "panelTitle" | "subtitle" | "filterAll" | "filterBlocked" | "filterBroken" | "searchPlaceholder" | "resetAll" | "resetConfirm" | "loading" | "loadFailed" | "emptyAll" | "emptyFiltered" | "emptyBlocked" | "emptyBroken" | "block" | "unblock" | "ops" | "cancel" | "confirm" | "close" | "back" | "summary" | "projectOf" | "switchesOf" | "rootProjectDsh" | "rootProjectAgents" | "rootCustom" | "rootUserDsh" | "rootUserAgents" | "rootBundled" | "rootLibrary" | "badgeBlocked" | "badgeBroken" | "badgeUnassigned" | "badgeBundled" | "badgeVirtual" | "copiesOf" | "issueMissingFrontmatter" | "issueInvalidFrontmatter" | "issueMissingName" | "issueInvalidName" | "issueMissingDescription" | "issueInvalidEntryName" | "descFromBody" | "nameFromEntry" | "notBlockable" | "deleteConfirm" | "deleteProtected" | "repairConfirm" | "resetDone" | "toggleDone" | "deleteDone" | "repairDone" | "wireError" | "rootMissing", string>;
+    en: Record<"delete" | "repair" | "panelTitle" | "subtitle" | "filterAll" | "filterBlocked" | "filterBroken" | "searchPlaceholder" | "resetAll" | "resetConfirm" | "resetConfirmAllow" | "loading" | "loadFailed" | "emptyAll" | "emptyFiltered" | "emptyBlocked" | "emptyBroken" | "block" | "unblock" | "ops" | "cancel" | "confirm" | "close" | "back" | "summary" | "projectOf" | "switchesOf" | "rootProjectDsh" | "rootProjectAgents" | "rootCustom" | "rootUserDsh" | "rootUserAgents" | "rootBundled" | "rootLibrary" | "badgeBlocked" | "badgeBroken" | "badgeUnassigned" | "badgeBundled" | "badgeVirtual" | "copiesOf" | "issueMissingFrontmatter" | "issueInvalidFrontmatter" | "issueMissingName" | "issueInvalidName" | "issueMissingDescription" | "issueInvalidEntryName" | "descFromBody" | "nameFromEntry" | "notBlockable" | "deleteConfirm" | "deleteProtected" | "repairConfirm" | "resetDone" | "toggleDone" | "deleteDone" | "repairDone" | "wireError" | "rootMissing", string>;
 };
 /** 文案 key。 */
 export type CopyKey = keyof typeof zh;

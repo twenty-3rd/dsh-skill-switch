@@ -320,6 +320,8 @@ export interface ActionReport {
   skipped?: Array<{ path: string; source: string; reason: string; message?: string }>
   /** 修复过的 skill 文件路径。 */
   repaired?: string[]
+  /** reset 是否顺带移除了 mode 文件（白名单模式下的必要动作）。 */
+  modeReset?: boolean
 }
 
 /** 面板 API 的上下文。 */
@@ -429,12 +431,20 @@ export function api(scope: ApiScope): Record<string, ApiMethod> {
       return await buildPanelView(scope, payload, { kind: 'toggle', name: skillName, touched })
     },
 
-    /** 清空本项目全部开关（一键恢复默认可见性）。 */
+    /**
+     * 清空本项目全部开关（一键恢复默认可见性）。
+     *
+     * 白名单模式（`mode: allow`）下必须连 mode 文件一起删：清空 `on/` 会让
+     * 白名单变成空集，等于把整个 skill 目录清空——与"恢复默认可见性"相反。
+     */
     async 'switches.reset'(payload: unknown): Promise<PanelView> {
-      const { projectRoot } = await projectScopeOf(scope, payload)
-      const removed = await clearSwitches(projectRoot, scope.config.switchesDir)
-      scope.logger.info(`skill-switch: project ${projectRoot} switches cleared (${removed.length} entries)`)
-      return await buildPanelView(scope, payload, { kind: 'reset', touched: removed })
+      const { projectRoot, state } = await projectScopeOf(scope, payload)
+      const modeReset = state.mode === 'allow'
+      const removed = await clearSwitches(projectRoot, scope.config.switchesDir, { includeMode: modeReset })
+      scope.logger.info(
+        `skill-switch: project ${projectRoot} switches cleared (${removed.length} entries${modeReset ? ', mode file removed' : ''})`,
+      )
+      return await buildPanelView(scope, payload, { kind: 'reset', touched: removed, modeReset })
     },
 
     /**
