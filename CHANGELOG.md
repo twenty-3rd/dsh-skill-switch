@@ -28,7 +28,7 @@
 
 - 源码从纯 JS（JSDoc）改为 TypeScript；构建产物 `lib/index.js`（ESM node）+
   `lib/client.js`（浏览器 CJS 闭包工厂）+ `lib/types/**/*.d.ts`。
-- 测试从 `node --test` 迁到 vitest，并从 19 个单测扩展到 **110 项**（含真实 cordis
+- 测试从 `node --test` 迁到 vitest，并从 19 个单测扩展到 **115 项**（含真实 cordis
   组合集成测试与客户端接线/SSR 渲染测试）。v1 的每一条开关语义都有对应回归用例。
 - 新的配置项：`dshHome`、`agentsHome`、`customSkillDirs`、`bundledSkillDir`、
   `allowSharedRootWrites`（默认 `true`；置 `false` 可保持 `~/.agents/skills` 只读）。
