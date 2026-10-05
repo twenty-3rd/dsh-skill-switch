@@ -313,11 +313,11 @@ function emptyLabel(filter: string, searching: boolean, total: number): string {
   return t('emptyFiltered')
 }
 
-/**
- * 一张 skill 卡片：左事实（名字 / 来源 / 描述 / 诊断），右操作（一键开关键
- * 与「操作」菜单）。
- */
-function SkillCard(props: {
+/** 打开的卡片菜单状态（`SkillCard` 也导出给渲染测试用）。 */
+export type SkillCardMenu = CardMenu
+
+/** `SkillCard` 的 props（导出以便单独做渲染测试）。 */
+export interface SkillCardProps {
   row: SkillRow
   busy: boolean
   menu: CardMenu
@@ -328,7 +328,13 @@ function SkillCard(props: {
   onConfirmDelete: () => void
   onConfirmRepair: () => void
   onCloseMenu: () => void
-}) {
+}
+
+/**
+ * 一张 skill 卡片：左事实（名字 / 来源 / 描述 / 诊断），右操作（一键开关键
+ * 与「操作」菜单）。导出是为了能在不启动 effect 的服务端渲染里覆盖每条分支。
+ */
+export function SkillCard(props: SkillCardProps) {
   const { row, busy, menu } = props
   const hasIssues = row.issues.length > 0
   const canRepair = hasIssues && row.descriptionSource !== 'none' && row.copies.some(copy => copy.deletable)

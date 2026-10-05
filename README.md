@@ -186,7 +186,7 @@ client 半体 (lib/client.js)
 ## 测试
 
 ```sh
-pnpm test        # vitest：94 项（纯逻辑 + 真实 cordis 组合 + 客户端接线/渲染）
+pnpm test        # vitest：110 项（纯逻辑 + 真实 cordis 组合 + 客户端接线/渲染）
 pnpm typecheck   # tsc --noEmit
 pnpm build       # lib/index.js + lib/client.js + lib/types
 ```
