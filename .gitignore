@@ -1,0 +1,7 @@
+node_modules/
+*.tsbuildinfo
+.DS_Store
+
+# NOTE: lib/ is NOT ignored — the built host/client bundles are committed so a
+# git/path install needs no build step (pnpm >= 10 blocks git-dependency build
+# scripts by default). Rebuild before committing src changes: pnpm build

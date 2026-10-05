@@ -1,0 +1,130 @@
+/**
+ * dsh-skill-switch 的纯逻辑半体：项目根解析、开关目录读写、目录过滤。
+ *
+ * 本模块不依赖 cordis / dsh 任何运行时服务，只依赖 node:fs / node:path，
+ * 因此可以独立单测（见 tests/switches.spec.ts）。宿主接线在 src/index.ts。
+ *
+ * 开关文件协议（相对项目根）——与 v1 完全兼容，v1 手写的开关目录无需迁移：
+ *
+ *   <projectRoot>/.dsh/skill-switches/
+ *   ├── mode           # 可选：内容第一行为 "deny"（默认）或 "allow"
+ *   ├── off/<name>     # deny 模式：隐藏该 skill（文件名 <name> 或 <name>.md）
+ *   └── on/<name>      # allow 模式：仅这些 skill 可见
+ *
+ * - 项目根 = 自 cwd 向上找到第一个含 .git 的目录；找不到则用 cwd 本身
+ *   （与 @deepseek-ai/dsh-skill-filesystem 的 findProjectRoot 语义一致）。
+ * - 开关文件内容是自由文本（写给人和日志看），过滤只看文件名。
+ * - 非法名字（非 kebab-case）与子目录会被忽略并上报，绝不抛错。
+ *
+ * "屏蔽 / 不屏蔽" 与集合的映射（让面板的开关在两种模式下都语义一致）：
+ * - deny 模式：屏蔽 = 在 off/ 建文件；恢复 = 删掉 off/ 里的同名文件
+ * - allow 模式：屏蔽 = 删掉 on/ 里的同名文件；恢复 = 在 on/ 建文件
+ * 两种情况下都会顺手清掉另一侧的同名文件，避免模式切换后语义漂移。
+ */
+/** 公开 skill 名语法（与 dsh-skill 的 SKILL_NAME / isSkillName 一致）。 */
+export declare const SKILL_NAME: RegExp;
+/** 开关模式：deny = 黑名单（隐藏 off/ 点名的），allow = 白名单（只放行 on/ 点名的）。 */
+export type SwitchMode = 'deny' | 'allow';
+/** 一个 skill 名是否符合公开 kebab-case 语法。 */
+export declare function isSkillName(name: string): boolean;
+/** 一个项目的开关状态。 */
+export interface SwitchState {
+    /** 开关目录是否存在。false 表示调用方应纯透传。 */
+    present: boolean;
+    mode: SwitchMode;
+    /** deny 模式：这些 skill 被隐藏。 */
+    off: Set<string>;
+    /** allow 模式：只有这些 skill 可见。 */
+    on: Set<string>;
+    /** 目录里被忽略的条目（子目录、非法文件名），用于诊断展示。 */
+    ignored: string[];
+}
+/** 开关目录不存在或不可读时返回的空状态：过滤器看到它就纯透传。 */
+export declare const ABSENT_STATE: Readonly<SwitchState>;
+/**
+ * 自 cwd 向上找项目根：第一个包含 .git 的目录；到文件系统顶还没找到
+ * 就回退为 cwd 自身。与 dsh-skill-filesystem 的同名函数语义保持一致，
+ * 保证开关目录和 .dsh/skills 解析到同一个根。
+ * @param cwd - 会话工作目录（session.header.cwd）。
+ * @returns 项目根的绝对路径。
+ */
+export declare function findProjectRoot(cwd: string): Promise<string>;
+/**
+ * 解析 mode 文件内容：取第一行、去空白、转小写；只认 "deny" / "allow"。
+ * @param text - mode 文件的原始内容。
+ * @returns 识别出的模式，无法识别返回 undefined。
+ */
+export declare function parseMode(text: string | undefined): SwitchMode | undefined;
+/**
+ * 把一个开关文件名归一化为 skill 名：剥掉可选的 .md 后缀并做语法校验。
+ * @param fileName - 目录项名字（如 "review"、"api-design.md"）。
+ * @returns 合法 skill 名；非法（大写、空格、.txt 等）返回 undefined。
+ */
+export declare function normalizeSwitchName(fileName: string): string | undefined;
+/**
+ * 读取一个开关集合目录（off/ 或 on/），返回合法 skill 名集合与被忽略项。
+ * 目录不存在或不可读都视为空集合，绝不抛错。
+ * @param dir - 集合目录的绝对路径。
+ */
+export declare function readNameSet(dir: string): Promise<{
+    names: Set<string>;
+    ignored: string[];
+}>;
+/**
+ * 读取项目根下开关目录的完整状态。
+ * @param projectRoot - 项目根（来自 findProjectRoot）。
+ * @param switchesDir - 相对项目根的开关目录（配置项 switchesDir）。
+ * @param defaultMode - 无 mode 文件（或内容无法识别）时的默认模式。
+ * @returns 状态；present 为 false 表示目录不存在，调用方应纯透传。
+ */
+export declare function readSwitchState(projectRoot: string, switchesDir: string, defaultMode: SwitchMode): Promise<SwitchState>;
+/**
+ * 判定一个 skill 名在给定状态下是否应被隐藏。
+ * @param state - readSwitchState 的结果。
+ * @param name - skill 名。
+ * @returns true 表示应从目录与 get() 中隐藏。
+ */
+export declare function isHidden(state: SwitchState | undefined, name: string): boolean;
+/**
+ * 按状态过滤 skill 摘要数组（过滤是幂等的，重复应用同一状态无害）。
+ * @param state - readSwitchState 的结果。
+ * @param skills - skill 摘要（含 name 字段）数组。
+ * @returns 过滤后的新数组；状态不生效时原样返回。
+ */
+export declare function filterSkills<T extends {
+    name: string;
+}>(state: SwitchState | undefined, skills: T[]): T[];
+/**
+ * 计算状态的比较指纹，用于变更日志的差量检测。
+ * @param state - readSwitchState 的结果。
+ */
+export declare function stateFingerprint(state: SwitchState | undefined): string;
+/** 表达 "屏蔽" 的集合目录（deny → off/，allow → on/）。 */
+export declare function collectionFor(mode: SwitchMode): 'off' | 'on';
+/** 开关目录的绝对路径。 */
+export declare function switchesPath(projectRoot: string, switchesDir: string): string;
+/**
+ * 写入一个开关：`blocked=true` 屏蔽该 skill，`false` 恢复可见。
+ *
+ * 同一个 `blocked` 在两种模式下的落盘动作不同，因为两个集合的**成员含义**
+ * 相反：
+ * - deny 模式（off/ = 被隐藏）：屏蔽 = 建 off/<name>，恢复 = 删 off/<name>
+ * - allow 模式（on/ = 被放行）：屏蔽 = 删 on/<name>，恢复 = 建 on/<name>
+ * 无论哪种，另一侧的同名残留都会被清掉，避免模式切换后语义漂移。
+ *
+ * 目录按需创建；不写 mode 文件（缺省即 defaultMode，默认 deny）。
+ *
+ * @param projectRoot - 项目根。
+ * @param switchesDir - 相对项目根的开关目录。
+ * @param name - 合法 kebab-case skill 名。
+ * @param blocked - true = 本项目隐藏该 skill；false = 本项目可见。
+ * @param mode - 当前生效的模式。
+ * @returns 写入/删除的绝对路径列表，供调用方回报。
+ */
+export declare function writeSwitch(projectRoot: string, switchesDir: string, name: string, blocked: boolean, mode: SwitchMode): Promise<string[]>;
+/**
+ * 清空一个项目的全部开关：删除 off/ 与 on/ 两个集合目录里的所有条目，
+ * 并把两侧空目录一并移除。项目没有开关目录时是 no-op。
+ * @returns 被删除的绝对路径列表。
+ */
+export declare function clearSwitches(projectRoot: string, switchesDir: string): Promise<string[]>;

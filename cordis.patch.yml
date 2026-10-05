@@ -1,0 +1,32 @@
+# dsh-skill-switch bundle patch
+#
+# This file is the `dsh.bundle.patch` layer of the package: when the plugin is
+# installed through the official CLI —
+#
+#   dsh plugin --profile <name> add /absolute/path/to/dsh-skill-switch   # local path
+#   dsh plugin --profile <name> add dsh-skill-switch                     # published
+#
+# — the command reconciles `dsh.profile.bundles` against installed packages
+# and, seeing this declaration, appends `dsh-skill-switch` to the bundle
+# stack. The profile boot then merges THIS patch (a single `insert` of the
+# plugin row) exactly like a manual cordis.patch.yml mount line. Adding a
+# bundle changes the HOST composition, so DSH must be restarted once; client
+# hot-reload alone is not enough.
+#
+# Override any field from the profile's own cordis.patch.yml by row id:
+#   - id: skill-switch
+#     config:
+#       allowSharedRootWrites: false   # make ~/.agents/skills read-only again
+- insert:
+    - id: skill-switch
+      name: dsh-skill-switch
+      config:
+        switchesDir: .dsh/skill-switches
+        defaultMode: deny
+        cacheTtlMs: 1000
+        forceRefreshOnGet: true
+        dshHome: ''
+        agentsHome: ''
+        customSkillDirs: []
+        bundledSkillDir: ''
+        allowSharedRootWrites: true
