@@ -168,8 +168,15 @@ function makeCssPlugin(pluginId: string): BuildPlugin {
           cssModules: { pattern: `[hash]_[local]` },
           minify: true,
         })
+        // 按 local 名排序后再写进产物：lightningcss 的 exports 是哈希表，
+        // 遍历顺序每次构建都可能不同，不排序会让 lib/client.js 每次 build 都
+        // 产生纯顺序差异（产物反复变脏、diff 无法审阅）。
         const classMap: Record<string, string> = {}
-        for (const [local, exp] of Object.entries(cssExports ?? {})) classMap[local] = exp.name
+        const exportsByName = cssExports ?? {}
+        for (const local of Object.keys(exportsByName).sort()) {
+          const exp = exportsByName[local]
+          if (exp !== undefined && exp !== null) classMap[local] = exp.name
+        }
         return [
           injectTag(pluginId, fileId, code.toString()),
           `export default ${JSON.stringify(classMap)};`,
