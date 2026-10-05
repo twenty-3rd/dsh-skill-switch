@@ -453,7 +453,7 @@ async function findSkillRow(scope: ApiScope, payload: unknown, skillName: string
   })
   const row = list.skills.find(candidate => candidate.name === skillName)
   if (row === undefined) {
-    throw new SwitchError('not-found', `skill "${skillName}" 不在本插件的扫描范围内`, 404)
+    throw new SwitchError('not-found', `skill "${skillName}" is outside this plugin's scanned roots`, 404)
   }
   return row
 }
@@ -474,7 +474,7 @@ export function api(scope: ApiScope): Record<string, ApiMethod> {
       const skillName = requireString(payload, 'name')
       const blocked = requireBoolean(payload, 'blocked')
       if (!isSkillName(skillName)) {
-        throw new SwitchError('bad-request', `"${skillName}" 不是合法的 kebab-case skill 名，无法写开关`)
+        throw new SwitchError('bad-request', `"${skillName}" is not a valid kebab-case skill name; cannot write a switch`)
       }
       const { projectRoot, state } = await projectScopeOf(scope, payload)
       const touched = await writeSwitch(projectRoot, scope.config.switchesDir, skillName, blocked, state.mode)
@@ -508,7 +508,7 @@ export function api(scope: ApiScope): Record<string, ApiMethod> {
       if (row.copies.length === 0) {
         throw new SwitchError(
           'protected',
-          `"${skillName}" 不是磁盘上的 skill（由运行时或其他 provider 提供），无法删除`,
+          `"${skillName}" has no on-disk copy (it comes from the runtime or another provider); nothing to delete`,
           403,
         )
       }
@@ -545,25 +545,25 @@ export function api(scope: ApiScope): Record<string, ApiMethod> {
       const skillName = requireString(payload, 'name')
       const row = await findSkillRow(scope, payload, skillName)
       if (row.issues.length === 0) {
-        throw new SwitchError('bad-request', `"${skillName}" 的 frontmatter 已经完整，无需补齐`)
+        throw new SwitchError('bad-request', `"${skillName}" already has a complete frontmatter; nothing to repair`)
       }
       const description = row.descriptionSource === 'none' ? '' : row.description
       if (description.trim() === '') {
         throw new SwitchError(
           'bad-request',
-          `无法为 "${skillName}" 自动生成描述（frontmatter 与正文都没有可用文字），请手动补充`,
+          `cannot derive a description for "${skillName}" (no usable text in frontmatter or body); please fill it in manually`,
         )
       }
       const repaired: string[] = []
       const failures: string[] = []
       for (const copy of row.copies) {
         if (!copy.deletable) {
-          failures.push(`${copy.path}（受保护根，跳过）`)
+          failures.push(`${copy.path} (protected root, skipped)`)
           continue
         }
         const target = repairableName(copy.declaredName, copy.entryName, row.name)
         if (target === undefined) {
-          failures.push(`${copy.path}（目录名/文件名不是合法 kebab-case，无法自动命名）`)
+          failures.push(`${copy.path} (entry name is not valid kebab-case; cannot auto-name)`)
           continue
         }
         try {
@@ -572,11 +572,11 @@ export function api(scope: ApiScope): Record<string, ApiMethod> {
           await writeFileAtomic(copy.path, next, { mode: 0o644 })
           repaired.push(copy.path)
         } catch (error) {
-          failures.push(`${copy.path}（${error instanceof Error ? error.message : String(error)}）`)
+          failures.push(`${copy.path} (${error instanceof Error ? error.message : String(error)})`)
         }
       }
       if (repaired.length === 0) {
-        throw new SwitchError('fs-error', `没有任何副本被修复：${failures.join('；')}`)
+        throw new SwitchError('fs-error', `no copy could be repaired: ${failures.join('; ')}`)
       }
       scope.logger.info(`skill-switch: repaired frontmatter of "${skillName}" in ${repaired.length} location(s)`)
       return await buildPanelView(scope, payload, { kind: 'repair', name: skillName, repaired, skipped: [] })

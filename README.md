@@ -127,6 +127,8 @@ rm -rf .dsh/skill-switches                     # 全部恢复
   sessionId 加任意绝对路径，让写入/删除发生在别处。
 - 方法派发走 `Object.hasOwn`：`constructor` / `toString` 这类原型成员会被当成
   "未知方法"返回 404，不会命中原型链。
+- `/skill-switch` 的 error.message 一律是**面向机器的英文**（wire 层）；面板按
+  wire code 出本地化文案，所以中文界面不会混进英文细节、英文界面也不会混进中文。
 - 删除成功后会顺手清掉本项目里该名字的开关文件，避免"删了再装回来还带着旧屏蔽"。
 
 ## 注意点：让"未生效"的 skill 可见
