@@ -51,6 +51,7 @@
     "watch": "tsdown --watch",
     "test": "pnpm build && vitest run",
     "test:unit": "vitest run",
+    "verify:installed": "node scripts/verify-installed.mjs",
     "prepublishOnly": "pnpm build"
   },
   "peerDependencies": {

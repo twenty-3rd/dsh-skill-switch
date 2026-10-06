@@ -256,8 +256,9 @@ client 半体 (lib/client.js)
 ## 测试
 
 ```sh
-pnpm test        # 先 pnpm build 再 vitest：135 项（纯逻辑 + 真实 cordis 组合 + 客户端接线/渲染 + 产物加载）
-pnpm test:unit   # 只跑测试（用现有 lib/，改过 src 请先 build）
+pnpm test              # 先 pnpm build 再 vitest：135 项（纯逻辑 + 真实 cordis 组合 + 客户端接线/渲染 + 产物加载）
+pnpm test:unit         # 只跑测试（用现有 lib/，改过 src 请先 build）
+pnpm verify:installed  # 装进 profile 之后：拿 App 同版本运行时验那份已安装产物（15 项）
 pnpm typecheck   # tsc --noEmit
 pnpm build       # lib/index.js + lib/client.js + lib/types
 ```
@@ -288,3 +289,9 @@ frontmatter 的 skill 确实在注册表里没有而在面板里有；删除后�
 ## License
 
 MIT
+
+## 安装避坑
+
+往 profile 里装插件时踩过的 pnpm 版本 / workspace 根 / desktop profile 限制等问题，
+以及"不重启怎么确认装对了"的三层验证方法，整理在
+[`docs/dsh-plugin-install-notes.md`](../../docs/dsh-plugin-install-notes.md)。
