@@ -10,8 +10,8 @@ export declare class SkillSwitchApiError extends Error {
 }
 import type { ActionReport, PanelView } from '../index.ts';
 import type { SkillForm, SkillIssue } from '../skill-scan.ts';
-import type { SkillCopyView, SkillView } from '../skill-view.ts';
-export type { ActionReport, SkillForm, SkillIssue };
+import type { SkillCopyView, SkillVerdictError, SkillView } from '../skill-view.ts';
+export type { ActionReport, SkillForm, SkillIssue, SkillVerdictError };
 /** 一处磁盘副本（= host 的 SkillCopyView）。 */
 export type SkillCopy = SkillCopyView;
 /** 面板里的一行（= host 的 SkillView）。 */
@@ -35,6 +35,6 @@ export declare const api: {
     resetSwitches: (scope: PanelScope) => Promise<PanelView>;
     /** 全局删除该 skill 的所有落盘副本。 */
     deleteSkill: (scope: PanelScope, name: string) => Promise<PanelView>;
-    /** 补齐 frontmatter，让未生效的 skill 重新被加载。 */
+    /** 补齐 frontmatter，让判定条件 A（在目录里）重新成立。 */
     repairSkill: (scope: PanelScope, name: string) => Promise<PanelView>;
 };

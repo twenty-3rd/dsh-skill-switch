@@ -3,7 +3,7 @@
  *
  * 核心回归点（对应"注意点 3"）：官方 provider 会把缺 name / 缺 description /
  * YAML 坏掉的条目整条丢掉，本层必须仍然把它们扫出来，并如实记录 issues，
- * 让面板能显示「未生效」以及原因，而不是像 dsh-skills-manager 那样看不见。
+ * 让面板能显示被官方丢弃的条目（判定的 A 失败）以及原因，而不是像 dsh-skills-manager 那样看不见。
  */
 import { describe, expect, it } from 'vitest'
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
@@ -305,7 +305,7 @@ describe('与官方 provider 的判定口径对齐（回归）', () => {
     await rm(root, { recursive: true, force: true })
   })
 
-  it('纯空白的 description 官方**接受**：不能误报未生效', async () => {
+  it('纯空白的 description 官方**接受**：不能误报成出错', async () => {
     const root = await makeRoot({ 'blank-desc/SKILL.md': '---\nname: blank-desc\ndescription: "   "\n---\n正文\n' })
     const [skill] = await scanSkillRoot(rootSpec(root))
     expect(skill?.issues).toEqual([])

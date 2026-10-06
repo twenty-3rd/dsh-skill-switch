@@ -20,9 +20,9 @@ export class SkillSwitchApiError extends Error {
 // 于是 host 改了字段而客户端忘记改这种事在 `tsc --noEmit` 就会直接报错。
 import type { ActionReport, PanelView } from '../index.ts'
 import type { SkillForm, SkillIssue } from '../skill-scan.ts'
-import type { SkillCopyView, SkillView } from '../skill-view.ts'
+import type { SkillCopyView, SkillVerdictError, SkillView } from '../skill-view.ts'
 
-export type { ActionReport, SkillForm, SkillIssue }
+export type { ActionReport, SkillForm, SkillIssue, SkillVerdictError }
 
 /** 一处磁盘副本（= host 的 SkillCopyView）。 */
 export type SkillCopy = SkillCopyView
@@ -92,7 +92,7 @@ export const api = {
   deleteSkill: (scope: PanelScope, name: string) =>
     call<PanelData>('skills.delete', scopePayload(scope, { name })),
 
-  /** 补齐 frontmatter，让未生效的 skill 重新被加载。 */
+  /** 补齐 frontmatter，让判定条件 A（在目录里）重新成立。 */
   repairSkill: (scope: PanelScope, name: string) =>
     call<PanelData>('skills.repair', scopePayload(scope, { name })),
 }

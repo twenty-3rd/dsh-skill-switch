@@ -6,11 +6,23 @@
  * 依赖面收敛成结构接口，既让类型检查可跑，也让测试可以直接提供骨架对象。
  * 一旦 DSH 上游漂移，只需改这一个文件。
  */
+/**
+ * 官方 SkillInvocationPolicy（@deepseek-ai/dsh-skill）。
+ *
+ * 目录返回的是 **invocation-neutral** 的摘要：注册表**不**按这两个开关过滤，
+ * 由消费方（`skill` 工具、命令目录、模型提示）自己过滤。所以"在目录里"与
+ * "能调用"是两件事，面板必须分别判定。
+ */
+export interface SwitchSkillInvocation {
+    readonly modelInvocable: boolean;
+    readonly userInvocable: boolean;
+}
 /** 官方 SkillSummary 里本插件用到的字段（@deepseek-ai/dsh-skill）。 */
 export interface SwitchSkillSummary {
     readonly name: string;
     readonly description: string;
     readonly whenToUse?: string;
+    readonly invocation?: SwitchSkillInvocation;
     /** 'project-dsh' | 'user-dsh' | 'bundled' | 'runtime' | … */
     readonly source: string;
     readonly provider: string;
@@ -28,10 +40,29 @@ export interface SwitchSkillRegistry {
     list(options?: SkillViewOptions): Promise<SwitchSkillSummary[]>;
     get(name: string, options?: SkillViewOptions): Promise<unknown>;
 }
-/** 读取目录时的选择项（只用到 cwd）。 */
+/**
+ * 读取目录时的选择项。
+ *
+ * `scope` 是**观察者作用域**（`@deepseek-ai/dsh-scope` 的 ScopeKey）：注册表按它
+ * 选择层（layers），省略 = **只读全局层**。桌面端把 skill provider 挂在 agent
+ * preset 的 standing scope 上（profile 里顶层 `skill-filesystem` 是 disabled 的），
+ * 所以不带 scope 读到的目录几乎为空——面板要的是"这个会话看到的目录"，必须带上
+ * 该会话 agent 的作用域。ScopeKey 的官方类型就是 `object`（键即身份），这里
+ * 按本仓约定用结构化类型，避免依赖 `@deepseek-ai/dsh-scope` 内部实现。
+ */
 export interface SkillViewOptions {
     cwd?: string;
+    scope?: object;
     signal?: AbortSignal;
+}
+/** 官方 `ctx.agents`（@deepseek-ai/dsh-agent）里本插件用到的部分。 */
+export interface SwitchAgentRegistry {
+    /**
+     * 取一个活跃 agent；**agent 对象本身就是它的 ScopeKey**
+     * （`dsh-agent` 里 `scopeTarget(agent, agent)`），所以它可以直接传给
+     * `snapshot({scope})`。会话不在跑（归档/未 hydrate）时返回 undefined。
+     */
+    get(id: string): object | undefined;
 }
 /** 一条 webserver 路由（@deepseek-ai/dsh-host-webserver 的 WebRoute 子集）。 */
 export interface SwitchWebRoute {
@@ -60,6 +91,14 @@ export interface HostContext {
             };
         } | undefined;
     };
+    /**
+     * 活跃 agent 注册表（可选服务）：面板用它拿"这个会话在看到什么目录"的
+     * 观察者作用域。缺它时面板不显示判定列，而不是降级成"全局层"——那会把
+     * 每个 skill 都误判成错误。
+     */
+    readonly agents?: SwitchAgentRegistry;
+    /** cordis 的可选服务读取（`ctx.get(name)`）；服务缺失时返回 undefined。 */
+    get?(name: string): unknown;
     /** 插件加载器（读 connection 行的 trustedHosts）。 */
     readonly loader: {
         entries(): Iterable<{

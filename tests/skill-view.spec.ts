@@ -187,7 +187,7 @@ describe('listSkills：磁盘 × runtime 合成', () => {
     await rm(user, { recursive: true, force: true })
   })
 
-  it('副本只要有一处有效，整行就不算未生效（issues 取并集但有效优先）', async () => {
+  it('副本只要有一处 frontmatter 正常，整行就不算出错（issues 取并集但正常优先）', async () => {
     const good = await makeRoot({ 'dup/SKILL.md': '---\nname: dup\ndescription: d\n---\n' }, 'ss-vg-')
     const bad = await makeRoot({ 'dup/SKILL.md': '# 坏的\n' }, 'ss-vb-')
     const roots: SkillRootSpec[] = [
@@ -232,6 +232,176 @@ describe('listSkills：磁盘 × runtime 合成', () => {
     })
     expect(view.roots.find(r => r.source === 'user-dsh')?.exists).toBe(true)
     expect(view.roots.find(r => r.source === 'custom')?.exists).toBe(false)
+    await rm(root, { recursive: true, force: true })
+  })
+})
+
+describe('listSkills：有效/错误判定（A 在目录里 ∧ B 模型可调用 ∧ C 用户可调用）', () => {
+  /** 一个记录调用参数的注册表：用来断言 scope 真的透传下去了。 */
+  function recordingRegistry(skills: SwitchSkillSummary[]): {
+    registry: SwitchSkillRegistry
+    seen: Array<{ cwd?: string; scope?: object }>
+  } {
+    const seen: Array<{ cwd?: string; scope?: object }> = []
+    return {
+      seen,
+      registry: {
+        snapshot: async (options) => {
+          seen.push(options ?? {})
+          return { skills, complete: true }
+        },
+        list: async () => skills,
+        get: async () => undefined,
+      },
+    }
+  }
+
+  const scopeKey = { fakeScope: true }
+
+  it('带 scope、目录里有它、B/C 都允许 -> 有效（errors 为空）', async () => {
+    const root = await makeRoot({ 'review/SKILL.md': '---\nname: review\ndescription: d\n---\n' })
+    const view = await listSkills({
+      skills: fakeRegistry([
+        { name: 'review', description: 'd', source: 'user-dsh', provider: 'filesystem', invocation: { modelInvocable: true, userInvocable: true } },
+      ]),
+      cwd: root,
+      scope: scopeKey,
+      roots: [{ path: root, source: 'user-dsh', rank: 400, live: true, deletable: true }],
+      state: undefined,
+      pathExists,
+    })
+    const row = view.skills.find(s => s.name === 'review')
+    expect(view.verdictAvailable).toBe(true)
+    expect(row?.errors).toEqual([])
+    expect(row?.invocation).toEqual({ modelInvocable: true, userInvocable: true })
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it('带 scope 但目录里没有 -> 错误：not-in-registry（A 不成立）', async () => {
+    const root = await makeRoot({ 'ghost/SKILL.md': '---\nname: ghost\ndescription: d\n---\n' })
+    const view = await listSkills({
+      skills: fakeRegistry([]),
+      cwd: root,
+      scope: scopeKey,
+      roots: [{ path: root, source: 'user-dsh', rank: 400, live: true, deletable: true }],
+      state: undefined,
+      pathExists,
+    })
+    const row = view.skills.find(s => s.name === 'ghost')
+    expect(view.verdictAvailable).toBe(true)
+    expect(row?.errors).toEqual(['not-in-registry'])
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it('目录里有但模型不可调用 -> model-not-invocable（B 不成立）', async () => {
+    const root = await makeRoot({ 'review/SKILL.md': '---\nname: review\ndescription: d\n---\n' })
+    const view = await listSkills({
+      skills: fakeRegistry([
+        { name: 'review', description: 'd', source: 'user-dsh', provider: 'filesystem', invocation: { modelInvocable: false, userInvocable: true } },
+      ]),
+      cwd: root,
+      scope: scopeKey,
+      roots: [{ path: root, source: 'user-dsh', rank: 400, live: true, deletable: true }],
+      state: undefined,
+      pathExists,
+    })
+    expect(view.skills.find(s => s.name === 'review')?.errors).toEqual(['model-not-invocable'])
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it('目录里有但用户不可调用 -> user-not-invocable（C 不成立）', async () => {
+    const root = await makeRoot({ 'review/SKILL.md': '---\nname: review\ndescription: d\n---\n' })
+    const view = await listSkills({
+      skills: fakeRegistry([
+        { name: 'review', description: 'd', source: 'user-dsh', provider: 'filesystem', invocation: { modelInvocable: true, userInvocable: false } },
+      ]),
+      cwd: root,
+      scope: scopeKey,
+      roots: [{ path: root, source: 'user-dsh', rank: 400, live: true, deletable: true }],
+      state: undefined,
+      pathExists,
+    })
+    expect(view.skills.find(s => s.name === 'review')?.errors).toEqual(['user-not-invocable'])
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it('目录里没带 invocation（版本漂移）-> 不报 B/C：不把"没读到"当成"不能调用"', async () => {
+    const root = await makeRoot({ 'review/SKILL.md': '---\nname: review\ndescription: d\n---\n' })
+    const view = await listSkills({
+      skills: fakeRegistry([{ name: 'review', description: 'd', source: 'user-dsh', provider: 'filesystem' }]),
+      cwd: root,
+      scope: scopeKey,
+      roots: [{ path: root, source: 'user-dsh', rank: 400, live: true, deletable: true }],
+      state: undefined,
+      pathExists,
+    })
+    const row = view.skills.find(s => s.name === 'review')
+    expect(row?.errors).toEqual([])
+    expect(row?.invocation).toBeUndefined()
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it('不带 scope -> verdictAvailable=false，且不把"读不到目录"当成错误', async () => {
+    const root = await makeRoot({ 'review/SKILL.md': '---\nname: review\ndescription: d\n---\n' })
+    const view = await listSkills({
+      // 没有 scope 时注册表只给全局层（真实桌面端里几乎是空的）。
+      skills: fakeRegistry([]),
+      cwd: root,
+      roots: [{ path: root, source: 'user-dsh', rank: 400, live: true, deletable: true }],
+      state: undefined,
+      pathExists,
+    })
+    expect(view.verdictAvailable).toBe(false)
+    expect(view.skills.find(s => s.name === 'review')?.errors).toEqual([])
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it('scope 原样透传给注册表：面板读的必须是这个会话的目录', async () => {
+    const root = await makeRoot({ 'review/SKILL.md': '---\nname: review\ndescription: d\n---\n' })
+    const { registry, seen } = recordingRegistry([])
+    await listSkills({
+      skills: registry,
+      cwd: root,
+      scope: scopeKey,
+      roots: [{ path: root, source: 'user-dsh', rank: 400, live: true, deletable: true }],
+      state: undefined,
+      pathExists,
+    })
+    expect(seen).toHaveLength(1)
+    expect(seen[0]?.scope).toBe(scopeKey)
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it('目录读取抛错 -> catalogError 且判定不可用（宁可不判定，也不全标错误）', async () => {
+    const root = await makeRoot({ 'review/SKILL.md': '---\nname: review\ndescription: d\n---\n' })
+    const view = await listSkills({
+      skills: brokenRegistry(),
+      cwd: root,
+      scope: scopeKey,
+      roots: [{ path: root, source: 'user-dsh', rank: 400, live: true, deletable: true }],
+      state: undefined,
+      pathExists,
+    })
+    expect(view.catalogError).toBe(true)
+    expect(view.verdictAvailable).toBe(false)
+    expect(view.skills[0]?.errors).toEqual([])
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it('虚拟条目（只在 runtime 里）也带判定：A 天然成立', async () => {
+    const root = await makeRoot({})
+    const view = await listSkills({
+      skills: fakeRegistry([
+        { name: 'virtual-skill', description: 'v', source: 'runtime', provider: 'p', invocation: { modelInvocable: true, userInvocable: false } },
+      ]),
+      cwd: root,
+      scope: scopeKey,
+      roots: [{ path: root, source: 'user-dsh', rank: 400, live: true, deletable: true }],
+      state: undefined,
+      pathExists,
+    })
+    const row = view.skills.find(s => s.name === 'virtual-skill')
+    expect(row?.errors).toEqual(['user-not-invocable'])
     await rm(root, { recursive: true, force: true })
   })
 })

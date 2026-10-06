@@ -14,15 +14,22 @@
  *    - 卸载（fiber dispose）时摘掉包装，服务回到原始形态；开关目录不存在时
  *      过滤器纯透传，行为与未安装本插件一致。
  *
- * 2. **面板 API**（新增，与 dsh-skills-manager 同风格但只做两件事）：
+ * 2. **面板 API**（新增，与 dsh-skills-manager 同风格但只做三件事）：
  *    `/skill-switch/api/*` 上的 JSON 接口，供客户端会话视图标签调用：
  *      - 列出本项目的 skill（磁盘容错扫描 × runtime 目录合成）
  *      - 一键开/关某个 skill 在本项目的可见性
  *      - 一键清空本项目全部开关
  *      - 全局删除某个 skill（清掉所有落盘副本）
  *      - 补齐 frontmatter（让缺 name/description 的 skill 重新生效）
+ *      - 每行的**有效/错误判定**：A 在目录里 ∧ B 模型可主动调用 ∧ C 用户可显式调用，
+ *        失败时回传是哪一条（`errors`），供面板写出原因
  *    路由按与 /api 网关相同的浏览器信任规则设栅栏，且所有文件操作都被限制在
  *    已知 skill 根之内。
+ *
+ *    判定的 A 必须按**会话的观察者作用域**读目录：`snapshot()` 的 `scope` 决定读哪些
+ *    layer，省略只读全局层，而桌面端把 provider 挂在 agent preset 的 standing scope
+ *    上（见 {@link agentOfSession}）。拿不到活跃 agent 时 wire 上
+ *    `verdictAvailable: false` 且不产出任何错误项。
  *
  * 与 dsh-skills-manager 的分工：那是「skill 生命周期管理」（库 + 分配 + 增删改），
  * 这里是「生效范围控制 + 一次性清除」，不重复它的创建/编辑/分配/重命名能力。
@@ -267,7 +274,7 @@ export function installSkillFilter(
   const originalGet = skills.get
 
   /** 包装 snapshot：过滤摘要数组，其余字段（complete 等）原样保留。 */
-  const wrappedSnapshot = async (options: { cwd?: string } = {}) => {
+  const wrappedSnapshot = async (options: { cwd?: string; scope?: object; signal?: AbortSignal } = {}) => {
     const result = await originalSnapshot.call(skills, options)
     const state = await resolveState(options?.cwd)
     if (state === undefined || state.present !== true) return result
@@ -278,12 +285,12 @@ export function installSkillFilter(
    * 包装 list：与 SkillRegistry.list 同语义（snapshot 的 skills 字段），
    * 直接委托包装后的 snapshot，避免双重过滤逻辑漂移。
    */
-  const wrappedList = async (options: { cwd?: string } = {}) => {
+  const wrappedList = async (options: { cwd?: string; scope?: object; signal?: AbortSignal } = {}) => {
     return (await wrappedSnapshot(options)).skills
   }
 
   /** 包装 get：被隐藏的 skill 直接返回 undefined，不进入加载路径。 */
-  const wrappedGet = async (skillName: string, options: { cwd?: string } = {}) => {
+  const wrappedGet = async (skillName: string, options: { cwd?: string; scope?: object; signal?: AbortSignal } = {}) => {
     const state = await resolveState(options?.cwd, config.forceRefreshOnGet)
     if (state !== undefined && isHidden(state, skillName)) {
       logger.info(`skill-switch: blocked load of "${skillName}" (project mode=${state.mode})`)
@@ -342,8 +349,13 @@ export interface PanelView {
   skills: SkillView[]
   /** runtime 目录观察是否完整。 */
   catalogComplete: boolean
-  /** runtime 目录读取失败（此时"未生效原因"无法判定）。 */
+  /** runtime 目录读取失败（此时判定列不可用）。 */
   catalogError: boolean
+  /**
+   * 判定列（有效/错误）是否可用：拿到该会话的观察者作用域且目录读取成功才为 true。
+   * false = 面板不显示判定，而不是把每一行都说成错误。
+   */
+  verdictAvailable: boolean
   /** 本次变更动作的报告（只读调用时为 null）。 */
   lastAction: ActionReport | null
 }
@@ -393,11 +405,14 @@ export function sessionCwdOf(ctx: HostContext, sessionId: string, clientCwd?: st
   return process.cwd()
 }
 
-/** 请求作用域：cwd + 项目根 + 当前开关状态。 */
+/** 请求作用域：会话 + cwd + 项目根 + 开关状态 + 观察者作用域。 */
 interface ProjectScope {
+  sessionId: string
   cwd: string
   projectRoot: string
   state: SwitchState
+  /** 该会话的观察者作用域（活跃 agent）；没有活跃 agent 时缺席。 */
+  agent?: object
 }
 
 /** 从 payload 解析请求作用域（sessionId 必填；cwd 只在会话已知但未 hydrate 时兜底）。 */
@@ -406,7 +421,77 @@ async function projectScopeOf(scope: ApiScope, payload: unknown): Promise<Projec
   const cwd = sessionCwdOf(scope.ctx, sessionId, optionalString(payload, 'cwd'))
   const projectRoot = await findProjectRoot(cwd)
   const state = await readSwitchState(projectRoot, scope.config.switchesDir, scope.config.defaultMode)
-  return { cwd, projectRoot, state }
+  const agent = agentOfSession(scope.ctx, sessionId)
+  return { sessionId, cwd, projectRoot, state, ...(agent !== undefined ? { agent } : {}) }
+}
+
+/**
+ * 取一个可选服务（`ctx.get(name)` 优先，退回属性读取；两者都不稳时不抛）。
+ *
+ * cordis 里访问未注册的服务在不同版本上可能抛错，所以两种读法都包了 try。
+ */
+function optionalService(ctx: HostContext, serviceName: string): unknown {
+  try {
+    if (typeof ctx.get === 'function') {
+      const value = ctx.get(serviceName)
+      if (value !== undefined && value !== null) return value
+    }
+  } catch {
+    /* 服务未注册 */
+  }
+  try {
+    return (ctx as unknown as Record<string, unknown>)[serviceName]
+  } catch {
+    return undefined
+  }
+}
+
+/** 一个对象是否是 agent 注册表（结构判定）。 */
+function isAgentRegistry(value: unknown): value is { get(id: string): unknown } {
+  return typeof value === 'object' && value !== null
+    && typeof (value as { get?: unknown }).get === 'function'
+}
+
+/**
+ * 解析会话的**观察者作用域**（该会话的活跃 agent）。
+ *
+ * 为什么 agent 可以直接当 scope 用：`dsh-agent` 里 agent 的 carrier 是
+ * `scopeTarget(agent, agent)`（"the subject agent; also the scope-carrier key"），
+ * 即 **agent 对象本身就是它的 ScopeKey**；agent preset 的 standing scope 是
+ * 匿名对象、外部拿不到，但 agent 的 key 通过 `bindScopeParent` 挂在它下面，
+ * 注册表的 `snapshot({scope})` 会沿 layer 链上溯到那一层。
+ *
+ * 桌面 profile 里顶层 `skill-filesystem` 是 disabled 的，provider 只注册在
+ * preset 的 standing scope 中——所以**不带 scope 读到的目录几乎是空的**，
+ * 面板必须拿到这个作用域才能说"这个会话看到了什么"。
+ *
+ * @param ctx - host 上下文。
+ * @param sessionId - 会话 id。
+ * @returns 活跃 agent（= ScopeKey），会话没在跑时为 undefined。
+ */
+function agentOfSession(ctx: HostContext, sessionId: string): object | undefined {
+  const registry = optionalService(ctx, 'agents')
+  if (!isAgentRegistry(registry)) return undefined
+  try {
+    const agent = registry.get(sessionId)
+    return typeof agent === 'object' && agent !== null ? agent : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/** 一次"作用域 + 面板列表"的完整读取（所有读写方法共用，避免多处漂移）。 */
+async function loadPanel(scope: ApiScope, payload: unknown): Promise<ProjectScope & { list: Awaited<ReturnType<typeof listSkills>> }> {
+  const project = await projectScopeOf(scope, payload)
+  const list = await listSkills({
+    skills: scope.raw,
+    cwd: project.cwd,
+    ...(project.agent !== undefined ? { scope: project.agent } : {}),
+    roots: rootsForProject(scope.config, project.projectRoot),
+    state: project.state,
+    pathExists,
+  })
+  return { ...project, list }
 }
 
 /** 组装一次面板视图。 */
@@ -415,15 +500,7 @@ async function buildPanelView(
   payload: unknown,
   lastAction: ActionReport | null = null,
 ): Promise<PanelView> {
-  const { cwd, projectRoot, state } = await projectScopeOf(scope, payload)
-  const roots = rootsForProject(scope.config, projectRoot)
-  const list = await listSkills({
-    skills: scope.raw,
-    cwd,
-    roots,
-    state,
-    pathExists,
-  })
+  const { cwd, projectRoot, state, list } = await loadPanel(scope, payload)
   return {
     cwd,
     projectRoot,
@@ -437,20 +514,14 @@ async function buildPanelView(
     skills: list.skills,
     catalogComplete: list.catalogComplete,
     catalogError: list.catalogError,
+    verdictAvailable: list.verdictAvailable,
     lastAction,
   }
 }
 
 /** 取出面板里某个名字的行（不存在则 not-found）。 */
 async function findSkillRow(scope: ApiScope, payload: unknown, skillName: string): Promise<SkillView> {
-  const { cwd, projectRoot, state } = await projectScopeOf(scope, payload)
-  const list = await listSkills({
-    skills: scope.raw,
-    cwd,
-    roots: rootsForProject(scope.config, projectRoot),
-    state,
-    pathExists,
-  })
+  const { list } = await loadPanel(scope, payload)
   const row = list.skills.find(candidate => candidate.name === skillName)
   if (row === undefined) {
     throw new SwitchError('not-found', `skill "${skillName}" is outside this plugin's scanned roots`, 404)

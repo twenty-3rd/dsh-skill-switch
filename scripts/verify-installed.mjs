@@ -151,9 +151,9 @@ check('开关文件落在 <项目>/.dsh/skill-switches/off/demo', true)
 await mkdir(join(project, '.dsh', 'skills', 'ghost'), { recursive: true })
 await writeFile(join(project, '.dsh', 'skills', 'ghost', 'SKILL.md'), '# 没有 frontmatter\n\n描述行\n')
 view = (await post('panel.load', { sessionId: 's1' })).body.value
-check('缺 frontmatter 的 skill 仍可见并标未生效', view.skills.find(s => s.name === 'ghost')?.issues.length === 1)
+check('缺 frontmatter 的 skill 仍可见并带 frontmatter 事实', view.skills.find(s => s.name === 'ghost')?.issues.length === 1)
 view = (await post('skills.repair', { sessionId: 's1', name: 'ghost' })).body.value
-check('补齐后未生效标记消失', view.skills.find(s => s.name === 'ghost')?.issues.length === 0)
+check('补齐后 frontmatter 事实消失', view.skills.find(s => s.name === 'ghost')?.issues.length === 0)
 view = (await post('skills.delete', { sessionId: 's1', name: 'ghost' })).body.value
 check('删除后从面板消失', view.skills.every(s => s.name !== 'ghost'))
 check(
@@ -173,6 +173,109 @@ check(
 )
 const requires = [...new Set([...clientCode.matchAll(/require\("([^"]+)"\)/g)].map(m => m[1]))].sort()
 check('客户端产物只依赖平台模块', requires.join(',') === 'react,react/jsx-runtime', requires.join(','))
+
+// ── 判定（有效/错误）：必须按**会话作用域**读目录 ─────────────────────────────
+//
+// 生产拓扑与这里的旧 setup 不同：桌面 profile 里顶层 skill-filesystem 是 disabled
+// 的，provider 只注册在 agent preset 的 standing scope 里。所以本段复现该形状：
+//   standing scope（匿名 key）里注册 provider → agent key 以 parent 指向它 →
+//   面板用 agent（= ScopeKey）查询。不带 scope 只能读到全局层（= 空）。
+let scopeUtils
+try {
+  scopeUtils = await import(`${RUNTIME}/@deepseek-ai/dsh-scope/lib/index.js`)
+} catch {
+  scopeUtils = undefined
+}
+
+if (scopeUtils === undefined) {
+  console.log('SKIP  判定作用域检查：运行时树里没有 @deepseek-ai/dsh-scope')
+} else {
+  const { createScope } = scopeUtils
+  const scratch2 = await mkdtemp(join(tmpdir(), 'ss-verdict-'))
+  const dsh2 = join(scratch2, 'dsh')
+  const agents2 = join(scratch2, 'agents')
+  const project2 = join(scratch2, 'proj')
+  await mkdir(join(project2, '.git'), { recursive: true })
+  const userSkill = async (name, body) => {
+    await mkdir(join(dsh2, 'skills', name), { recursive: true })
+    await writeFile(join(dsh2, 'skills', name, 'SKILL.md'), body)
+  }
+  await userSkill('ok', '---\nname: ok\ndescription: d\n---\n')
+  await userSkill('model-off', '---\nname: model-off\ndescription: d\ndisable-model-invocation: true\n---\n')
+  await userSkill('user-off', '---\nname: user-off\ndescription: d\nuser-invocable: false\n---\n')
+  await userSkill('broken', '# 没有 frontmatter\n\n描述行\n')
+
+  const standingKey = {}
+  const agentKey = {}
+  const app2 = new Context()
+  app2.provide('sessions', {
+    get: id => (id === 'agent-session' ? { header: { cwd: project2 } }
+      : id === 'idle-session' ? { header: { cwd: project2 } }
+        : undefined),
+  })
+  app2.provide('loader', { entries: () => [{ options: { name: 'connection', config: { trustedHosts: [] } } }] })
+  // agent 对象本身就是它的 ScopeKey（真实 DSH：scopeTarget(agent, agent)）。
+  app2.provide('agents', { get: id => (id === 'agent-session' ? agentKey : undefined) })
+  await app2.plugin(SkillRegistry)
+  const standing = createScope(app2, standingKey)
+  await standing.ctx.plugin(skillFs, {
+    includeDefaultRoots: true,
+    dshHome: dsh2,
+    agentsHome: agents2,
+    watch: false,
+  })
+  createScope(app2, agentKey, { parent: standingKey })
+  await app2.plugin(WebServer, { host: '127.0.0.1', port: 0 })
+  const fiber2 = app2.plugin({ name: plugin.name, inject: plugin.inject, apply: plugin.apply }, {
+    dshHome: dsh2,
+    agentsHome: agents2,
+    bundledSkillDir: join(scratch2, 'bundled'),
+    cacheTtlMs: 0,
+  })
+  await fiber2
+  const port2 = app2.webServer.port
+  const post2 = async (method, payload) => {
+    const response = await fetch(`http://127.0.0.1:${port2}/skill-switch/api/${method}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    return { status: response.status, body: await response.json() }
+  }
+
+  const globalOnly = (await app2.skills.snapshot({ cwd: project2 })).skills.map(s => s.name).sort()
+  const scoped = (await app2.skills.snapshot({ cwd: project2, scope: agentKey })).skills.map(s => s.name).sort()
+  check('不带 scope 只读到全局层（复现"面板看不见 skill"的成因）', globalOnly.length === 0, globalOnly.join(','))
+  check('按 agent key 读得到 preset 层里的 skill（坏 frontmatter 的条目被 provider 丢弃）', scoped.join(',') === 'model-off,ok,user-off', scoped.join(','))
+
+  const verdict = (await post2('panel.load', { sessionId: 'agent-session' })).body.value
+  const errorsOf = n => verdict.skills.find(s => s.name === n)?.errors
+  check('有活跃 agent -> 判定列可用', verdict.verdictAvailable === true)
+  check('健康 skill = 有效（errors 为空）', JSON.stringify(errorsOf('ok')) === '[]', JSON.stringify(errorsOf('ok')))
+  check(
+    'disable-model-invocation -> 错误：model-not-invocable',
+    JSON.stringify(errorsOf('model-off')) === '["model-not-invocable"]',
+    JSON.stringify(errorsOf('model-off')),
+  )
+  check(
+    'user-invocable: false -> 错误：user-not-invocable',
+    JSON.stringify(errorsOf('user-off')) === '["user-not-invocable"]',
+    JSON.stringify(errorsOf('user-off')),
+  )
+  check(
+    '缺 frontmatter -> 错误：not-in-registry（并附磁盘解释）',
+    JSON.stringify(errorsOf('broken')) === '["not-in-registry"]'
+      && verdict.skills.find(s => s.name === 'broken')?.issues.length === 1,
+    `${JSON.stringify(errorsOf('broken'))} issues=${JSON.stringify(verdict.skills.find(s => s.name === 'broken')?.issues)}`,
+  )
+
+  const idle = (await post2('panel.load', { sessionId: 'idle-session' })).body.value
+  check('没有活跃 agent 的会话 -> 不判定，且行里没有错误项', idle.verdictAvailable === false
+    && idle.skills.every(s => (s.errors ?? []).length === 0))
+
+  await fiber2.dispose()
+  await rm(scratch2, { recursive: true, force: true })
+}
 
 // 卸载必须真的摘掉包装
 await fiber.dispose()

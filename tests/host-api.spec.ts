@@ -4,7 +4,7 @@
  * loader，然后把本插件的 host 半体挂上去，用真实 HTTP 驱动 /skill-switch API。
  *
  * 这是"真组合"关卡——不是手搓 ctx.plugin() 的空壳：屏蔽后的目录必须真的从
- * **官方注册表**的 snapshot 里消失，未生效的 skill 必须真的出现在面板里而
+ * **官方注册表**的 snapshot 里消失，被官方丢弃的 skill 必须真的出现在面板里而
  * 不在注册表里，修复后必须真的被注册表重新认领。
  *
  * 一个真实的工程事实：SkillRegistry 会**按 cwd 缓存** provider 的发现结果，
@@ -225,7 +225,7 @@ describe('真实组合：官方注册表 + WebServer + /skill-switch API', () =>
     await expect(readFile(join(project, '.dsh', 'skill-switches', 'off', 'restored'), 'utf8')).rejects.toThrow()
   })
 
-  it('"未生效"的 skill 也看得见（注意点 3）：官方注册表丢弃它，面板列出它并给出原因', async () => {
+  it('被官方丢弃的 skill 也看得见（注意点 3）：注册表里没有它，面板列出它并给出错误原因', async () => {
     const project = await useProject('ghost')
     await writeProjectSkill(project, 'ghost-skill', '# 没有 frontmatter 的 skill\n\n正文第一行会被当成描述。\n')
 
@@ -242,7 +242,7 @@ describe('真实组合：官方注册表 + WebServer + /skill-switch API', () =>
     expect(ghost.blockable).toBe(true)
   })
 
-  it('补齐 frontmatter：文件被改写、面板当场不再标"未生效"、注册表随后认领它', async () => {
+  it('补齐 frontmatter：文件被改写、面板当场不再标「错误」、注册表随后认领它', async () => {
     const project = await useProject('repair')
     const path = await writeProjectSkill(project, 'fixme', '# 只有正文\n\n描述行\n')
     // 先读一次，让注册表把这个 cwd 的（不含 fixme 的）发现结果缓存下来。
@@ -251,7 +251,7 @@ describe('真实组合：官方注册表 + WebServer + /skill-switch API', () =>
     const view = await post<PanelView>(port, 'skills.repair', { sessionId: 'session-1', name: 'fixme' })
     expect(view.lastAction?.kind).toBe('repair')
     expect(view.lastAction?.repaired).toEqual([path])
-    // 面板的"未生效"来自磁盘事实，所以当场就消失（不依赖目录缓存刷新）。
+    // 面板的「错误」来自注册表 + 磁盘事实的对照，所以当场就变（不依赖目录缓存刷新）。
     expect(rowOf(view, 'fixme').issues).toEqual([])
     expect(rowOf(view, 'fixme').blocked).toBe(false)
 
@@ -511,6 +511,71 @@ describe('真实 cordis：fiber dispose 之后 ctx.skills 恢复原样', () => {
     const loaded = await app2.skills.get('leaky', { cwd: project }) as { name: string } | undefined
     expect(loaded?.name).toBe('leaky')
 
+    await rm(scratchDir, { recursive: true, force: true })
+  })
+})
+
+/**
+ * 判定接线：面板的"有效/错误"必须建立在**该会话的观察者作用域**上。
+ *
+ * 这一组同时说明两件容易搞错的事：
+ * - 拿不到活跃 agent 时，wire 上 `verdictAvailable=false` 且**行里没有任何错误项**
+ *   ——"我不知道"绝不能渲染成"它是错的"；
+ * - 拿到 agent 后判定生效，健康的 skill 是「有效」（A 在目录里 ∧ B/C 由注册表
+ *   返回的 invocation 决定）。
+ *
+ * 本 harness 把 filesystem provider 挂在**全局层**（真实桌面端挂在 agent preset 的
+ * standing scope 上），所以任何 scope 都能读到它；子作用域的分层行为由
+ * `scripts/verify-scope-layers.mjs` 用真实 `@deepseek-ai/dsh-scope` 复现。
+ */
+describe('判定接线：ctx.agents 决定 verdictAvailable（真实注册表 + 真实 HTTP）', () => {
+  it('没有 agents -> 不判定且无错误项；给出 agent -> 判定生效且健康 skill 是「有效」', async () => {
+    const scratchDir = await mkdtemp(join(tmpdir(), 'ss-verdict-'))
+    const project = join(scratchDir, 'proj')
+    await mkdir(join(project, '.git'), { recursive: true })
+    await mkdir(join(project, '.dsh', 'skills', 'healthy'), { recursive: true })
+    await writeFile(join(project, '.dsh', 'skills', 'healthy', 'SKILL.md'), '---\nname: healthy\ndescription: d\n---\n')
+
+    /** 活跃 agent（在真实 DSH 里 agent 对象本身就是它的 ScopeKey）。 */
+    let agentValue: object | undefined
+
+    const app3 = new Context()
+    app3.provide('sessions', { get: (id: string) => (id === 's1' ? { header: { cwd: project } } : undefined) })
+    app3.provide('loader', { entries: () => [] })
+    app3.provide('agents', { get: (id: string) => (id === 's1' ? agentValue : undefined) })
+    await app3.plugin(SkillRegistry)
+    await app3.plugin(skillFs as unknown as Parameters<typeof app3.plugin>[0], {
+      includeDefaultRoots: true,
+      dshHome: scratchDir,
+      agentsHome: join(scratchDir, 'agents'),
+      watch: false,
+    })
+    await app3.plugin(WebServer, { host: '127.0.0.1', port: 0 })
+    const pluginObject: unknown = { name, inject, apply }
+    const fiber = app3.plugin(pluginObject as Parameters<typeof app3.plugin>[0], {
+      dshHome: scratchDir,
+      agentsHome: join(scratchDir, 'agents'),
+      bundledSkillDir: join(scratchDir, 'bundled'),
+      cacheTtlMs: 0,
+    }) as unknown as { dispose(): Promise<void> }
+    await fiber
+    const verdictPort = app3.webServer.port
+
+    // 1) 会话没有活跃 agent：判定列不可用，行上不带任何错误项。
+    const before = await post<PanelView>(verdictPort, 'panel.load', { sessionId: 's1' })
+    expect(before.verdictAvailable).toBe(false)
+    expect(before.skills.map(s => s.name)).toContain('healthy')
+    expect(before.skills.every(s => s.errors.length === 0)).toBe(true)
+
+    // 2) 宿主给出该会话的 agent：判定生效，健康 skill = 有效（errors 为空）。
+    agentValue = { fakeAgent: true }
+    const after = await post<PanelView>(verdictPort, 'panel.load', { sessionId: 's1' })
+    expect(after.verdictAvailable).toBe(true)
+    const row = after.skills.find(s => s.name === 'healthy')
+    expect(row?.errors).toEqual([])
+    expect(row?.invocation).toEqual({ modelInvocable: true, userInvocable: true })
+
+    await fiber.dispose()
     await rm(scratchDir, { recursive: true, force: true })
   })
 })

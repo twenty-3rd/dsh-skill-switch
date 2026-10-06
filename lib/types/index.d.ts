@@ -14,15 +14,22 @@
  *    - 卸载（fiber dispose）时摘掉包装，服务回到原始形态；开关目录不存在时
  *      过滤器纯透传，行为与未安装本插件一致。
  *
- * 2. **面板 API**（新增，与 dsh-skills-manager 同风格但只做两件事）：
+ * 2. **面板 API**（新增，与 dsh-skills-manager 同风格但只做三件事）：
  *    `/skill-switch/api/*` 上的 JSON 接口，供客户端会话视图标签调用：
  *      - 列出本项目的 skill（磁盘容错扫描 × runtime 目录合成）
  *      - 一键开/关某个 skill 在本项目的可见性
  *      - 一键清空本项目全部开关
  *      - 全局删除某个 skill（清掉所有落盘副本）
  *      - 补齐 frontmatter（让缺 name/description 的 skill 重新生效）
+ *      - 每行的**有效/错误判定**：A 在目录里 ∧ B 模型可主动调用 ∧ C 用户可显式调用，
+ *        失败时回传是哪一条（`errors`），供面板写出原因
  *    路由按与 /api 网关相同的浏览器信任规则设栅栏，且所有文件操作都被限制在
  *    已知 skill 根之内。
+ *
+ *    判定的 A 必须按**会话的观察者作用域**读目录：`snapshot()` 的 `scope` 决定读哪些
+ *    layer，省略只读全局层，而桌面端把 provider 挂在 agent preset 的 standing scope
+ *    上（见 {@link agentOfSession}）。拿不到活跃 agent 时 wire 上
+ *    `verdictAvailable: false` 且不产出任何错误项。
  *
  * 与 dsh-skills-manager 的分工：那是「skill 生命周期管理」（库 + 分配 + 增删改），
  * 这里是「生效范围控制 + 一次性清除」，不重复它的创建/编辑/分配/重命名能力。
@@ -167,8 +174,13 @@ export interface PanelView {
     skills: SkillView[];
     /** runtime 目录观察是否完整。 */
     catalogComplete: boolean;
-    /** runtime 目录读取失败（此时"未生效原因"无法判定）。 */
+    /** runtime 目录读取失败（此时判定列不可用）。 */
     catalogError: boolean;
+    /**
+     * 判定列（有效/错误）是否可用：拿到该会话的观察者作用域且目录读取成功才为 true。
+     * false = 面板不显示判定，而不是把每一行都说成错误。
+     */
+    verdictAvailable: boolean;
     /** 本次变更动作的报告（只读调用时为 null）。 */
     lastAction: ActionReport | null;
 }

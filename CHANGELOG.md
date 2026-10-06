@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.3.0
+
+把"生效状态"从一个含糊的推断，换成**用户定义的判定**，并按会话作用域取数据。
+**开关文件协议与屏蔽语义仍然完全向后兼容**（0.1.x 的开关目录照旧可用）。
+
+### 新增
+
+- **「有效 / 错误」判定**：`有效 = A 在目录里 ∧ B 模型可主动调用 ∧ C 用户可显式调用`。
+  任一条不成立即「错误」，且**行内写出是哪一条**（`not-in-registry` /
+  `model-not-invocable` / `user-not-invocable`）——只写"错误"是不可行动的。
+- **判定按会话的观察者作用域读**：`ctx.agents.get(sessionId)` 拿到该会话的 agent
+  （DSH 里 agent 对象本身就是它的 ScopeKey），再 `snapshot({ cwd, scope: agent })`。
+  桌面 profile 里顶层 `skill-filesystem` 是 disabled 的、provider 只注册在 agent
+  preset 的 standing scope 上，所以不带 scope 只能读到全局层——这正是 0.2.0 里
+  34 行被误标成「未生效 · 原因未知」的成因。
+- wire 上新增 `verdictAvailable`（判定列是否可用）与每行的 `errors` / `invocation`；
+  判定不可用时**不产出任何错误项**。
+- `scripts/verify-installed.mjs` 新增按作用域判定的端到端复现（真实 `dsh-scope`
+  分层 + 真实注册表 + 真实 HTTP）：23 项检查。
+
+### 移除
+
+- 「未生效」徽标、「未生效」筛选 chip 与计数、「未生效 · 原因未知」文案：
+  "未生效"一个词同时指过四件不同的事（provider 拒收 / 不在目录 / 名字不匹配 /
+  读不到目录），是误报的根源。
+- 面板顶部的「项目：<绝对路径>」与「开关目录：… · mode=deny」一行：内部细节，
+  用户无法据此行动（`mode` 的语义仍在「恢复本项全部」的二次确认里说明）。
+
+### 变更
+
+- `issues` 从"独立诊断徽标"降级为 **A 失败的解释器**：一行同时显示
+  `错误 · 不在 skill 注册表里 · frontmatter 缺少 description`。
+- 判定用**未被本插件过滤**的注册表（包装前捕获的原始方法）：被屏蔽的 skill 仍是
+  「有效」，屏蔽只表现为「已屏蔽」徽标。
+- 客户端对缺失的 `errors` 字段按空处理：只刷新页面、还没重启宿主时不白屏。
+
 ## 0.2.0
 
 从"纯文件协议、无界面"的 0.1.x 升级为 **host + client 双半体**的面板插件。

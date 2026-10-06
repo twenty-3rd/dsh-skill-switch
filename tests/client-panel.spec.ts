@@ -1,16 +1,19 @@
 /**
  * 卡片渲染测试：把 SkillCard 单独做服务端渲染，覆盖列表里每条会分支的路径
- * ——状态徽标、诊断行、一键开关键的可用性、以及两个二次确认菜单的内容。
+ * ——判定徽标（有效/错误）、错误原因、一键开关键的可用性、以及两个二次确认菜单。
  *
  * 服务端渲染意味着 effect（以及随后的 API 调用）不会执行，断言只针对渲染结果；
  * 这也让它能顺带守住"组件里不写死中文/不崩在空字段上"。
+ *
+ * 判定语义（见 src/skill-view.ts 的 SkillVerdictError）：有效 = A 在目录里 ∧
+ * B 模型可调用 ∧ C 用户可调用；任一条不成立 = 错误，且必须写出是哪一条。
  */
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { SkillCard } from '../src/client/SkillSwitchPanel.tsx'
 import type { SkillCardMenu } from '../src/client/SkillSwitchPanel.tsx'
-import type { SkillCopy, SkillRow } from '../src/client/api.ts'
+import type { SkillCopy, SkillRow, SkillVerdictError } from '../src/client/api.ts'
 import { attachLocale } from '../src/client/locales.ts'
 
 afterEach(() => { attachLocale(undefined) })
@@ -32,8 +35,22 @@ function copy(overrides: Partial<SkillCopy> = {}): SkillCopy {
   }
 }
 
+/** 与 host 的 `verdictErrors()` 同构：夹具自己推 errors，夹具与产品语义不会漂移。 */
+function errorsFor(
+  inCatalog: boolean,
+  invocation: { modelInvocable: boolean; userInvocable: boolean },
+): SkillVerdictError[] {
+  if (!inCatalog) return ['not-in-registry']
+  const errors: SkillVerdictError[] = []
+  if (!invocation.modelInvocable) errors.push('model-not-invocable')
+  if (!invocation.userInvocable) errors.push('user-not-invocable')
+  return errors
+}
+
 /** 一行 skill 夹具。 */
 function row(overrides: Partial<SkillRow> = {}): SkillRow {
+  const inCatalog = overrides.inCatalog ?? true
+  const invocation = overrides.invocation ?? { modelInvocable: true, userInvocable: true }
   return {
     name: 'demo',
     description: '示例描述',
@@ -44,7 +61,9 @@ function row(overrides: Partial<SkillRow> = {}): SkillRow {
     live: true,
     blockable: true,
     blocked: false,
-    inCatalog: true,
+    inCatalog,
+    invocation,
+    errors: overrides.errors ?? errorsFor(inCatalog, invocation),
     issues: [],
     deletable: true,
     path: '/proj/.dsh/skills/demo/SKILL.md',
@@ -54,11 +73,17 @@ function row(overrides: Partial<SkillRow> = {}): SkillRow {
   }
 }
 
-/** 渲染一张卡片。 */
-function renderCard(overrides: Partial<SkillRow> = {}, menu: SkillCardMenu = null, busy = false): string {
+/** 渲染一张卡片（`showVerdict` 默认 true = 面板拿到了该会话的观察者作用域）。 */
+function renderCard(
+  overrides: Partial<SkillRow> = {},
+  menu: SkillCardMenu = null,
+  busy = false,
+  showVerdict = true,
+): string {
   attachLocale({ getSnapshot: () => ({ active: 'zh' }) })
   return renderToStaticMarkup(createElement(SkillCard, {
     row: row(overrides),
+    showVerdict,
     busy,
     menu,
     onToggle: vi.fn(),
@@ -72,33 +97,71 @@ function renderCard(overrides: Partial<SkillRow> = {}, menu: SkillCardMenu = nul
 }
 
 describe('SkillCard：事实区', () => {
-  it('正常项：名字、来源徽标、描述、开关文案是「屏蔽」', () => {
+  it('有效项：名字、来源徽标、描述、「有效」徽标，开关文案是「屏蔽」', () => {
     const markup = renderCard()
     expect(markup).toContain('demo')
     expect(markup).toContain('项目 .dsh')
     expect(markup).toContain('示例描述')
+    expect(markup).toContain('有效')
     expect(markup).toContain('屏蔽')
     expect(markup).not.toContain('已屏蔽')
-    expect(markup).not.toContain('未生效')
+    expect(markup).not.toContain('错误')
   })
 
-  it('已屏蔽项：打上「已屏蔽」徽标，开关文案变成「启用」', () => {
+  it('已屏蔽项：打上「已屏蔽」徽标，开关文案变成「启用」，判定仍是「有效」', () => {
     const markup = renderCard({ blocked: true })
     expect(markup).toContain('已屏蔽')
     expect(markup).toContain('启用')
+    // 屏蔽是"本项目不可见"，不是"skill 坏了"：判定不能因此变成错误。
+    expect(markup).toContain('有效')
+    expect(markup).not.toContain('错误')
   })
 
-  it('未生效项：打上「未生效」徽标并写出具体原因', () => {
+  it('错误项（不在注册表）：打上「错误」徽标，并写出 A 条不成立', () => {
+    const markup = renderCard({ inCatalog: false })
+    expect(markup).toContain('错误')
+    expect(markup).toContain('不在 skill 注册表里')
+    expect(markup).not.toContain('有效')
+  })
+
+  it('错误项（不在注册表 + frontmatter 缺字段）：判定原因与磁盘解释同时给出', () => {
     const markup = renderCard({
       inCatalog: false,
       issues: ['missing-frontmatter'],
       descriptionSource: 'body',
       nameSource: 'entry',
     })
-    expect(markup).toContain('未生效')
+    expect(markup).toContain('错误')
+    expect(markup).toContain('不在 skill 注册表里')
     expect(markup).toContain('缺少 YAML frontmatter')
     expect(markup).toContain('描述取自正文首段')
     expect(markup).toContain('名字取自目录名')
+  })
+
+  it('错误项（模型不可调用）：写出 B 条不成立', () => {
+    const markup = renderCard({ invocation: { modelInvocable: false, userInvocable: true } })
+    expect(markup).toContain('错误')
+    expect(markup).toContain('模型不能主动调用')
+    expect(markup).not.toContain('不在 skill 注册表里')
+  })
+
+  it('错误项（用户不可调用）：写出 C 条不成立', () => {
+    const markup = renderCard({ invocation: { modelInvocable: true, userInvocable: false } })
+    expect(markup).toContain('错误')
+    expect(markup).toContain('用户不能显式调用')
+  })
+
+  it('B/C 同时不成立：两条原因都列出来', () => {
+    const markup = renderCard({ invocation: { modelInvocable: false, userInvocable: false } })
+    expect(markup).toContain('模型不能主动调用')
+    expect(markup).toContain('用户不能显式调用')
+  })
+
+  it('拿不到观察者作用域（showVerdict=false）：不显示判定，也不列判定原因', () => {
+    const markup = renderCard({ inCatalog: false }, null, false, false)
+    expect(markup).not.toContain('有效')
+    expect(markup).not.toContain('错误')
+    expect(markup).not.toContain('不在 skill 注册表里')
   })
 
   it('名字不合法：禁用一键开关键并给出原因', () => {
@@ -114,7 +177,7 @@ describe('SkillCard：事实区', () => {
     expect(markup).toContain('2 处副本')
   })
 
-  it('库里的副本（未分配）：显示「未分配」徽标', () => {
+  it('库里的副本（未分配）：显示「未分配」徽标；不在注册表就是错误', () => {
     const markup = renderCard({
       source: 'library',
       inCatalog: false,
@@ -122,6 +185,7 @@ describe('SkillCard：事实区', () => {
     })
     expect(markup).toContain('未分配')
     expect(markup).toContain('Skill 库')
+    expect(markup).toContain('不在 skill 注册表里')
   })
 
   it('内置项：显示只读徽标', () => {
@@ -132,9 +196,10 @@ describe('SkillCard：事实区', () => {
     expect(markup).toContain('只读')
   })
 
-  it('虚拟项（runtime 注册、磁盘上没有）：显示运行时徽标', () => {
+  it('虚拟项（runtime 注册、磁盘上没有）：显示运行时徽标，且有判定', () => {
     const markup = renderCard({ form: 'virtual', source: 'runtime', copies: [], deletable: false })
     expect(markup).toContain('运行时')
+    expect(markup).toContain('有效')
   })
 
   it('描述为空时不崩，显示占位破折号', () => {
@@ -148,7 +213,7 @@ describe('SkillCard：事实区', () => {
 })
 
 describe('SkillCard：操作菜单', () => {
-  it('默认菜单：未生效项出现「补齐 frontmatter」与「删除（全部副本）」', () => {
+  it('默认菜单：有问题项出现「补齐 frontmatter」与「删除（全部副本）」', () => {
     const markup = renderCard({ inCatalog: false, issues: ['missing-description'], descriptionSource: 'body' }, { name: 'demo', mode: 'actions' })
     expect(markup).toContain('补齐 frontmatter')
     expect(markup).toContain('删除（全部副本）')
@@ -193,10 +258,11 @@ describe('SkillCard：操作菜单', () => {
 })
 
 describe('SkillCard：英文 locale', () => {
-  it('整卡切到英文文案', () => {
+  it('整卡切到英文文案（含判定与错误原因）', () => {
     attachLocale({ getSnapshot: () => ({ active: 'en' }) })
     const markup = renderToStaticMarkup(createElement(SkillCard, {
-      row: row({ blocked: true, issues: ['missing-name'] }),
+      row: row({ blocked: true, inCatalog: false, issues: ['missing-name'] }),
+      showVerdict: true,
       busy: false,
       menu: { name: 'demo', mode: 'actions' },
       onToggle: vi.fn(),
@@ -208,10 +274,12 @@ describe('SkillCard：英文 locale', () => {
       onCloseMenu: vi.fn(),
     }))
     expect(markup).toContain('Blocked')
-    expect(markup).toContain('Inactive')
+    expect(markup).toContain('Error')
+    expect(markup).toContain('not in the skill registry')
     expect(markup).toContain('Actions')
     expect(markup).toContain('Delete (all copies)')
     expect(markup).not.toContain('已屏蔽')
+    expect(markup).not.toContain('错误')
   })
 })
 
@@ -227,19 +295,19 @@ describe('SkillCard：诚实性（回归）', () => {
     expect(markup).toContain('/app/bundled/demo')
   })
 
-  it('磁盘上有、注册表里没有、frontmatter 又没问题 -> 显示"未生效 · 原因未知"', () => {
-    const markup = renderCard({ inCatalog: false, issues: [] })
-    expect(markup).toContain('未生效')
-    expect(markup).toContain('原因未知')
+  it('「未生效」与「原因未知」是保留词：任何渲染分支都不再出现', () => {
+    const valid = renderCard()
+    const invalid = renderCard({ inCatalog: false, issues: [] })
+    const hidden = renderCard({ inCatalog: false }, null, false, false)
+    for (const markup of [valid, invalid, hidden]) {
+      expect(markup).not.toContain('未生效')
+      expect(markup).not.toContain('原因未知')
+    }
   })
 
-  it('库里的副本（未分配）不该被当成"未生效"', () => {
-    const markup = renderCard({
-      source: 'library',
-      inCatalog: false,
-      copies: [copy({ source: 'library', live: false, rootPath: '/home/me/.dsh/skill-library' })],
-    })
-    expect(markup).toContain('未分配')
-    expect(markup).not.toContain('未生效')
+  it('拿不到作用域时宁可不说，也不把"我不知道"渲染成"它是错的"', () => {
+    const markup = renderCard({ inCatalog: false }, null, false, false)
+    expect(markup).not.toContain('错误')
+    expect(markup).not.toContain('不在 skill 注册表里')
   })
 })

@@ -13,7 +13,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { PanelStore } from './state.ts'
-import type { PanelData, PanelScope, SkillIssue, SkillRow } from './api.ts'
+import type { PanelData, PanelScope, SkillIssue, SkillRow, SkillVerdictError } from './api.ts'
 import { api, SkillSwitchApiError } from './api.ts'
 import { t } from './locales.ts'
 import css from './SkillSwitchPanel.module.css'
@@ -53,7 +53,7 @@ export function sourceLabel(source: string): string {
   }
 }
 
-/** 「未生效」原因 → 本地化文案。 */
+/** frontmatter 事实 → 本地化文案（作为「错误」的解释：为什么它不在目录里）。 */
 export function issueLabel(issue: SkillIssue): string {
   switch (issue) {
     case 'missing-frontmatter': return t('issueMissingFrontmatter')
@@ -64,6 +64,21 @@ export function issueLabel(issue: SkillIssue): string {
     case 'invalid-entry-name': return t('issueInvalidEntryName')
     case 'invalid-invocation': return t('issueInvalidInvocation')
     default: return issue
+  }
+}
+
+/**
+ * 判定失败项 → 本地化文案。
+ *
+ * 「错误」必须说清是 A/B/C 哪一条不成立：只写"错误"用户无法行动，而"原因未知"
+ * 那种兜底说法（上一版）是把"我没读到"当成了结论。
+ */
+export function verdictLabel(error: SkillVerdictError): string {
+  switch (error) {
+    case 'not-in-registry': return t('verdictNotInRegistry')
+    case 'model-not-invocable': return t('verdictModelBlocked')
+    case 'user-not-invocable': return t('verdictUserBlocked')
+    default: return error
   }
 }
 
@@ -196,7 +211,6 @@ export function SkillSwitchBody(props: { store: PanelStore; scope: PanelScope })
   const query = state.query.trim().toLowerCase()
   const rows = (data?.skills ?? []).filter((row) => {
     if (state.filter === 'blocked' && !row.blocked) return false
-    if (state.filter === 'broken' && row.issues.length === 0) return false
     if (query !== '') {
       const haystack = `${row.name} ${row.description}`.toLowerCase()
       if (!haystack.includes(query)) return false
@@ -206,7 +220,9 @@ export function SkillSwitchBody(props: { store: PanelStore; scope: PanelScope })
 
   const total = data?.skills.length ?? 0
   const blockedCount = (data?.skills ?? []).filter(row => row.blocked).length
-  const brokenCount = (data?.skills ?? []).filter(row => row.issues.length > 0).length
+  // `?? []` 是**过渡期防线**：宿主半体仍是被重启前的旧版本时 wire 上没有 errors，
+  // 新客户端刷新后不该整页崩掉（重启宿主后行为一致）。
+  const errorCount = (data?.skills ?? []).filter(row => (row.errors ?? []).length > 0).length
   const switchCount = (data?.off.length ?? 0) + (data?.on.length ?? 0)
 
   return (
@@ -224,12 +240,6 @@ export function SkillSwitchBody(props: { store: PanelStore; scope: PanelScope })
             count={blockedCount}
             active={state.filter === 'blocked'}
             onClick={() => store.actions.setFilter('blocked')}
-          />
-          <FilterChip
-            label={t('filterBroken')}
-            count={brokenCount}
-            active={state.filter === 'broken'}
-            onClick={() => store.actions.setFilter('broken')}
           />
         </div>
         <div className={css.actions}>
@@ -252,13 +262,6 @@ export function SkillSwitchBody(props: { store: PanelStore; scope: PanelScope })
         </div>
       </div>
 
-      {data !== null && (
-        <div className={css.scopeLine}>
-          <span>{t('projectOf')}：<code>{data.projectRoot}</code></span>
-          <span>{t('switchesOf')}：<code>{data.switchesPath}</code>{data.switchesPresent ? '' : ' (—)'} · mode={data.mode}</span>
-        </div>
-      )}
-
       {confirmReset && (
         <div className={css.notice}>
           {data?.mode === 'allow' ? t('resetConfirmAllow') : t('resetConfirm')}
@@ -276,13 +279,16 @@ export function SkillSwitchBody(props: { store: PanelStore; scope: PanelScope })
       {error !== null && <div className={css.error}>{error}</div>}
       {notice !== null && <div className={css.notice}>{notice}</div>}
       {data?.catalogError === true && <div className={css.error}>{t('catalogUnavailable')}</div>}
+      {data !== null && data.verdictAvailable === false && data.catalogError !== true && (
+        <div className={css.notice}>{t('verdictUnavailable')}</div>
+      )}
 
       <div className={css.body}>
         {loading && data === null && <p className={css.status}>{t('loading')}</p>}
         {!loading && data === null && <p className={css.status}>{t('loadFailed')}</p>}
         {data !== null && (
           <>
-            <div className={css.summary}>{t('summary', { total, blocked: blockedCount, broken: brokenCount })}</div>
+            <div className={css.summary}>{t('summary', { total, blocked: blockedCount, error: errorCount })}</div>
             {rows.length === 0
               ? <p className={css.status}>{emptyLabel(state.filter, query !== '', total)}</p>
               : (
@@ -291,6 +297,7 @@ export function SkillSwitchBody(props: { store: PanelStore; scope: PanelScope })
                     <SkillCard
                       key={row.name}
                       row={row}
+                      showVerdict={data.verdictAvailable}
                       busy={busyName === row.name}
                       menu={menu !== null && menu.name === row.name ? menu : null}
                       onToggle={() => { void toggle(row) }}
@@ -329,7 +336,6 @@ function emptyLabel(filter: string, searching: boolean, total: number): string {
   if (total === 0) return t('emptyAll')
   if (searching) return t('emptyFiltered')
   if (filter === 'blocked') return t('emptyBlocked')
-  if (filter === 'broken') return t('emptyBroken')
   return t('emptyFiltered')
 }
 
@@ -339,6 +345,8 @@ export type SkillCardMenu = CardMenu
 /** `SkillCard` 的 props（导出以便单独做渲染测试）。 */
 export interface SkillCardProps {
   row: SkillRow
+  /** 面板是否拿到了该会话的观察者作用域（false = 不渲染有效/错误，也不列原因）。 */
+  showVerdict: boolean
   busy: boolean
   menu: CardMenu
   onToggle: () => void
@@ -351,18 +359,21 @@ export interface SkillCardProps {
 }
 
 /**
- * 一张 skill 卡片：左事实（名字 / 来源 / 描述 / 诊断），右操作（一键开关键
- * 与「操作」菜单）。导出是为了能在不启动 effect 的服务端渲染里覆盖每条分支。
+ * 一张 skill 卡片：左事实（名字 / 来源 / 描述 / 判定与原因），右操作
+ * （一键开关键与「操作」菜单）。导出是为了能在不启动 effect 的服务端渲染里
+ * 覆盖每条分支。
  */
 export function SkillCard(props: SkillCardProps) {
-  const { row, busy, menu } = props
+  const { row, showVerdict, busy, menu } = props
   const hasIssues = row.issues.length > 0
   const canRepair = hasIssues && row.descriptionSource !== 'none' && row.copies.some(copy => copy.deletable)
   const libraryOnly = row.copies.length > 0 && row.copies.every(copy => !copy.live)
-  // 磁盘上有、注册表里没有、又看不出 frontmatter 问题：只能如实说"原因未知"
-  // （可能是 runtime 目录读取失败，也可能官方 provider 还有本插件没建模的拒绝条件）。
-  const unknownState = !row.inCatalog && !libraryOnly && !hasIssues
-  const broken = hasIssues || unknownState
+  // 判定：A 在目录里 ∧ B 模型可调用 ∧ C 用户可调用。errors 为空 = 有效。
+  // `?? []` 同 panel：宿主还是旧版本时 wire 上没有 errors，不能让它把页面打崩。
+  const errors = showVerdict ? (row.errors ?? []) : []
+  const valid = errors.length === 0
+  const showMeta = errors.length > 0 || hasIssues || row.nameSource === 'entry'
+    || row.descriptionSource === 'body' || row.copies.length > 1 || !row.blockable
 
   return (
     <div
@@ -373,8 +384,12 @@ export function SkillCard(props: SkillCardProps) {
         <span className={css.skillNameRow}>
           <span className={css.skillName} title={row.name}>{row.name}</span>
           <span className={`${css.badge} ${css.badgeSource}`}>{sourceLabel(row.source)}</span>
+          {showVerdict && (
+            <span className={`${css.badge} ${valid ? css.badgeValid : css.badgeError}`}>
+              {valid ? t('badgeValid') : t('badgeError')}
+            </span>
+          )}
           {row.blocked && <span className={`${css.badge} ${css.badgeBlocked}`}>{t('badgeBlocked')}</span>}
-          {broken && <span className={`${css.badge} ${css.badgeBroken}`}>{t('badgeBroken')}</span>}
           {libraryOnly && <span className={css.badge}>{t('badgeUnassigned')}</span>}
           {row.source === 'bundled' && <span className={css.badge}>{t('badgeBundled')}</span>}
           {row.form === 'virtual' && <span className={css.badge}>{t('badgeVirtual')}</span>}
@@ -382,10 +397,10 @@ export function SkillCard(props: SkillCardProps) {
         <span className={css.skillDesc} title={row.description}>
           {row.description !== '' ? row.description : '—'}
         </span>
-        {(broken || row.nameSource === 'entry' || row.descriptionSource === 'body' || row.copies.length > 1 || !row.blockable) && (
+        {showMeta && (
           <span className={css.skillMeta}>
+            {errors.length > 0 && <span className={css.metaWarn}>{errors.map(verdictLabel).join(' · ')}</span>}
             {hasIssues && <span className={css.metaWarn}>{row.issues.map(issueLabel).join(' · ')}</span>}
-            {unknownState && <span className={css.metaWarn}>{t('issueUnknown')}</span>}
             {row.nameSource === 'entry' && <span>{t('nameFromEntry')}</span>}
             {row.descriptionSource === 'body' && <span>{t('descFromBody')}</span>}
             {row.copies.length > 1 && <span>{t('copiesOf', { count: row.copies.length })}</span>}

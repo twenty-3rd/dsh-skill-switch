@@ -159,7 +159,7 @@ describe('lib/client.js 作为真实产物', () => {
     const markup = renderToStaticMarkup(createElement(View as never, injected as never))
     expect(markup).toContain('全部')
     expect(markup).toContain('已屏蔽')
-    expect(markup).toContain('未生效')
+    expect(markup).not.toContain('未生效')
     expect(markup).toContain('恢复本项全部')
   })
 

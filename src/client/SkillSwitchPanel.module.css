@@ -123,22 +123,8 @@
   color: var(--dsw-alias-label-primary-inverted, #fff);
 }
 
-/* Scope line: the project root + the switch directory, both elided. */
-.scopeLine {
-  flex: none;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  padding: 6px 14px 0;
-  font-size: 11px;
-  line-height: 16px;
-  color: var(--dsw-alias-label-tertiary, #888);
-}
-
-.scopeLine code {
-  font: 11px/16px ui-monospace, SFMono-Regular, Menlo, monospace;
-  word-break: break-all;
-}
+/* Scope line（项目绝对路径 + mode）已按用户要求从面板移除：那是内部细节，用户
+ * 无法据此行动。将来若要"跳到开关目录"，引入一个显式入口，而不是常驻一行。 */
 
 .body {
   flex: 1;
@@ -262,7 +248,14 @@
   color: var(--dsw-alias-label-primary-inverted, #fff);
 }
 
-.badgeBroken {
+/* 判定徽标：有效（描边绿）/ 错误（描边红）。绿比红弱，让错误自己跳出来。 */
+.badgeValid {
+  border-color: var(--dsw-alias-state-success-primary, #1a8f4a);
+  background: transparent;
+  color: var(--dsw-alias-state-success-primary, #1a8f4a);
+}
+
+.badgeError {
   border-color: var(--dsw-alias-state-error-primary, #d93838);
   background: transparent;
   color: var(--dsw-alias-state-error-primary, #d93838);

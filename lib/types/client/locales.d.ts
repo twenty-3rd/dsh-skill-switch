@@ -1,6 +1,10 @@
 /**
  * zh/en 文案。走 DSH 的 i18n 系统：client apply 时挂上 `ctx.locale`，
  * `t()` 从活动 locale 解析文案；两份字典同时注册进 DSH 的 locale registry。
+ *
+ * 判定词只有两个：**有效**（A 在目录里 ∧ B 模型可调用 ∧ C 用户可调用）与
+ * **错误**（任一条不成立）。不给"未生效"留文案：那个词同时指过四件不同的事，
+ * 是上一版误报的根源。
  */
 export declare const LOCALE_NS = "dsh-skill-switch";
 /** zh 字典（同时注册进 DSH locale registry）。 */
@@ -8,7 +12,6 @@ export declare const zh: {
     readonly panelTitle: "Skill 开关";
     readonly filterAll: "全部";
     readonly filterBlocked: "已屏蔽";
-    readonly filterBroken: "未生效";
     readonly searchPlaceholder: "搜索名字或描述…";
     readonly resetAll: "恢复本项全部";
     readonly resetConfirm: "清空本项目所有开关文件？所有 skill 恢复默认可见性。";
@@ -18,7 +21,6 @@ export declare const zh: {
     readonly emptyAll: "这个项目里还没有发现任何 skill";
     readonly emptyFiltered: "没有符合条件的 skill";
     readonly emptyBlocked: "本项目当前没有屏蔽任何 skill";
-    readonly emptyBroken: "没有\"未生效\"的 skill：所有 skill 的 frontmatter 都完整";
     readonly block: "屏蔽";
     readonly unblock: "启用";
     readonly ops: "操作";
@@ -26,9 +28,7 @@ export declare const zh: {
     readonly repair: "补齐 frontmatter";
     readonly cancel: "取消";
     readonly confirm: "确认";
-    readonly summary: "共 {total} 个 · 已屏蔽 {blocked} · 未生效 {broken}";
-    readonly projectOf: "项目";
-    readonly switchesOf: "开关目录";
+    readonly summary: "共 {total} 个 · 已屏蔽 {blocked} · 错误 {error}";
     readonly rootProjectDsh: "项目 .dsh";
     readonly rootProjectAgents: "项目 .agents";
     readonly rootCustom: "自定义";
@@ -37,11 +37,16 @@ export declare const zh: {
     readonly rootBundled: "内置";
     readonly rootLibrary: "Skill 库";
     readonly badgeBlocked: "已屏蔽";
-    readonly badgeBroken: "未生效";
+    readonly badgeValid: "有效";
+    readonly badgeError: "错误";
     readonly badgeUnassigned: "未分配";
     readonly badgeBundled: "只读";
     readonly badgeVirtual: "运行时";
     readonly copiesOf: "{count} 处副本";
+    readonly verdictNotInRegistry: "不在 skill 注册表里（DSH 不会加载它）";
+    readonly verdictModelBlocked: "模型不能主动调用（disable-model-invocation）";
+    readonly verdictUserBlocked: "用户不能显式调用（user-invocable: false）";
+    readonly verdictUnavailable: "当前会话没有活跃的 agent，本次不显示有效/错误判定。";
     readonly issueMissingFrontmatter: "缺少 YAML frontmatter，DSH 会忽略它";
     readonly issueInvalidFrontmatter: "YAML frontmatter 解析失败，DSH 会忽略它";
     readonly issueMissingName: "frontmatter 缺少 name";
@@ -49,14 +54,13 @@ export declare const zh: {
     readonly issueMissingDescription: "frontmatter 缺少 description";
     readonly issueInvalidEntryName: "目录/文件名不是合法 kebab-case";
     readonly issueInvalidInvocation: "invocation 字段非法（含遗留键），DSH 会忽略它";
-    readonly issueUnknown: "注册表里没有它，但 frontmatter 也看不出问题——原因未知";
     readonly descFromBody: "描述取自正文首段";
     readonly nameFromEntry: "名字取自目录名";
     readonly notBlockable: "名字不合法，无法按名写开关";
     readonly deleteConfirm: "将在下列位置永久删除该 skill（不可恢复）。其他项目自己的 .dsh/skills 不在本面板扫描范围内：";
     readonly protectedCopy: "受保护，将跳过";
     readonly skippedOf: "有 {count} 处副本被跳过（受保护或删除失败）";
-    readonly catalogUnavailable: "runtime skill 目录读取失败，下面的「生效状态」不可信。";
+    readonly catalogUnavailable: "runtime skill 目录读取失败，本次不显示有效/错误判定。";
     readonly errBadRequest: "请求不合法（名字或参数有问题）";
     readonly errNotFound: "找不到该 skill 的落盘副本";
     readonly errProtected: "它由运行时提供，磁盘上没有可删除的副本";
@@ -78,7 +82,6 @@ export declare const dictionaries: {
         readonly panelTitle: "Skill 开关";
         readonly filterAll: "全部";
         readonly filterBlocked: "已屏蔽";
-        readonly filterBroken: "未生效";
         readonly searchPlaceholder: "搜索名字或描述…";
         readonly resetAll: "恢复本项全部";
         readonly resetConfirm: "清空本项目所有开关文件？所有 skill 恢复默认可见性。";
@@ -88,7 +91,6 @@ export declare const dictionaries: {
         readonly emptyAll: "这个项目里还没有发现任何 skill";
         readonly emptyFiltered: "没有符合条件的 skill";
         readonly emptyBlocked: "本项目当前没有屏蔽任何 skill";
-        readonly emptyBroken: "没有\"未生效\"的 skill：所有 skill 的 frontmatter 都完整";
         readonly block: "屏蔽";
         readonly unblock: "启用";
         readonly ops: "操作";
@@ -96,9 +98,7 @@ export declare const dictionaries: {
         readonly repair: "补齐 frontmatter";
         readonly cancel: "取消";
         readonly confirm: "确认";
-        readonly summary: "共 {total} 个 · 已屏蔽 {blocked} · 未生效 {broken}";
-        readonly projectOf: "项目";
-        readonly switchesOf: "开关目录";
+        readonly summary: "共 {total} 个 · 已屏蔽 {blocked} · 错误 {error}";
         readonly rootProjectDsh: "项目 .dsh";
         readonly rootProjectAgents: "项目 .agents";
         readonly rootCustom: "自定义";
@@ -107,11 +107,16 @@ export declare const dictionaries: {
         readonly rootBundled: "内置";
         readonly rootLibrary: "Skill 库";
         readonly badgeBlocked: "已屏蔽";
-        readonly badgeBroken: "未生效";
+        readonly badgeValid: "有效";
+        readonly badgeError: "错误";
         readonly badgeUnassigned: "未分配";
         readonly badgeBundled: "只读";
         readonly badgeVirtual: "运行时";
         readonly copiesOf: "{count} 处副本";
+        readonly verdictNotInRegistry: "不在 skill 注册表里（DSH 不会加载它）";
+        readonly verdictModelBlocked: "模型不能主动调用（disable-model-invocation）";
+        readonly verdictUserBlocked: "用户不能显式调用（user-invocable: false）";
+        readonly verdictUnavailable: "当前会话没有活跃的 agent，本次不显示有效/错误判定。";
         readonly issueMissingFrontmatter: "缺少 YAML frontmatter，DSH 会忽略它";
         readonly issueInvalidFrontmatter: "YAML frontmatter 解析失败，DSH 会忽略它";
         readonly issueMissingName: "frontmatter 缺少 name";
@@ -119,14 +124,13 @@ export declare const dictionaries: {
         readonly issueMissingDescription: "frontmatter 缺少 description";
         readonly issueInvalidEntryName: "目录/文件名不是合法 kebab-case";
         readonly issueInvalidInvocation: "invocation 字段非法（含遗留键），DSH 会忽略它";
-        readonly issueUnknown: "注册表里没有它，但 frontmatter 也看不出问题——原因未知";
         readonly descFromBody: "描述取自正文首段";
         readonly nameFromEntry: "名字取自目录名";
         readonly notBlockable: "名字不合法，无法按名写开关";
         readonly deleteConfirm: "将在下列位置永久删除该 skill（不可恢复）。其他项目自己的 .dsh/skills 不在本面板扫描范围内：";
         readonly protectedCopy: "受保护，将跳过";
         readonly skippedOf: "有 {count} 处副本被跳过（受保护或删除失败）";
-        readonly catalogUnavailable: "runtime skill 目录读取失败，下面的「生效状态」不可信。";
+        readonly catalogUnavailable: "runtime skill 目录读取失败，本次不显示有效/错误判定。";
         readonly errBadRequest: "请求不合法（名字或参数有问题）";
         readonly errNotFound: "找不到该 skill 的落盘副本";
         readonly errProtected: "它由运行时提供，磁盘上没有可删除的副本";
@@ -140,7 +144,7 @@ export declare const dictionaries: {
         readonly repairDone: "已补齐 frontmatter";
         readonly wireError: "请求失败";
     };
-    en: Record<"delete" | "repair" | "panelTitle" | "filterAll" | "filterBlocked" | "filterBroken" | "searchPlaceholder" | "resetAll" | "resetConfirm" | "resetConfirmAllow" | "loading" | "loadFailed" | "emptyAll" | "emptyFiltered" | "emptyBlocked" | "emptyBroken" | "block" | "unblock" | "ops" | "cancel" | "confirm" | "summary" | "projectOf" | "switchesOf" | "rootProjectDsh" | "rootProjectAgents" | "rootCustom" | "rootUserDsh" | "rootUserAgents" | "rootBundled" | "rootLibrary" | "badgeBlocked" | "badgeBroken" | "badgeUnassigned" | "badgeBundled" | "badgeVirtual" | "copiesOf" | "issueMissingFrontmatter" | "issueInvalidFrontmatter" | "issueMissingName" | "issueInvalidName" | "issueMissingDescription" | "issueInvalidEntryName" | "issueInvalidInvocation" | "issueUnknown" | "descFromBody" | "nameFromEntry" | "notBlockable" | "deleteConfirm" | "protectedCopy" | "skippedOf" | "catalogUnavailable" | "errBadRequest" | "errNotFound" | "errProtected" | "errForbidden" | "errNetwork" | "deleteProtected" | "repairConfirm" | "resetDone" | "toggleDone" | "deleteDone" | "repairDone" | "wireError", string>;
+    en: Record<"delete" | "repair" | "panelTitle" | "filterAll" | "filterBlocked" | "searchPlaceholder" | "resetAll" | "resetConfirm" | "resetConfirmAllow" | "loading" | "loadFailed" | "emptyAll" | "emptyFiltered" | "emptyBlocked" | "block" | "unblock" | "ops" | "cancel" | "confirm" | "summary" | "rootProjectDsh" | "rootProjectAgents" | "rootCustom" | "rootUserDsh" | "rootUserAgents" | "rootBundled" | "rootLibrary" | "badgeBlocked" | "badgeValid" | "badgeError" | "badgeUnassigned" | "badgeBundled" | "badgeVirtual" | "copiesOf" | "verdictNotInRegistry" | "verdictModelBlocked" | "verdictUserBlocked" | "verdictUnavailable" | "issueMissingFrontmatter" | "issueInvalidFrontmatter" | "issueMissingName" | "issueInvalidName" | "issueMissingDescription" | "issueInvalidEntryName" | "issueInvalidInvocation" | "descFromBody" | "nameFromEntry" | "notBlockable" | "deleteConfirm" | "protectedCopy" | "skippedOf" | "catalogUnavailable" | "errBadRequest" | "errNotFound" | "errProtected" | "errForbidden" | "errNetwork" | "deleteProtected" | "repairConfirm" | "resetDone" | "toggleDone" | "deleteDone" | "repairDone" | "wireError", string>;
 };
 /** 文案 key。 */
 export type CopyKey = keyof typeof zh;

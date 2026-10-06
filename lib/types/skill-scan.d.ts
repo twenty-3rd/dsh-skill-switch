@@ -12,7 +12,7 @@
  * - 名字：优先 frontmatter `name`，缺失时回退到目录名 / 文件名（kebab-case 时）
  * - 描述：优先 frontmatter `description`，缺失时回退到正文第一段有意义的文字
  * - 任何导致官方 provider 忽略该条目的原因都记进 `issues`，面板据此展示
- *   「未生效」徽标与原因，并提供「补齐 frontmatter」修复入口
+ *   面板里作为「错误」的解释，并提供「补齐 frontmatter」修复入口
  *
  * 根与 rank（数字越小优先级越高），对齐 dsh-skill-filesystem 的 roots()：
  *   project .dsh/skills (100) → project .agents/skills (200) → custom (300)
@@ -25,7 +25,7 @@ export type SkillRootSource = 'project-dsh' | 'project-agents' | 'custom' | 'use
 /** skill 的落盘形态：目录 bundle（含 SKILL.md）或单文件 <name>.md。 */
 export type SkillForm = 'bundle' | 'flat';
 /**
- * 一个候选条目被官方 provider 忽略的原因（面板据此解释「未生效」）。
+ * 一个候选条目被官方 provider 忽略的原因（面板据此解释判定条件 A 的失败）。
  *
  * 取值对齐 `@deepseek-ai/dsh-skill-filesystem` 的 `parseSkillFile()`：
  * 它会在 frontmatter 缺失/坏掉、缺 name、name 不合语法、缺 description、
@@ -133,7 +133,7 @@ export type DocumentParts = {
 /**
  * 一次读清 frontmatter 状态、字段与正文。
  * 关键点：**frontmatter 解析失败时也把围栏之后的正文带出来**，这样面板对
- * 「未生效」的 skill 仍能给出可读描述（官方 provider 此时直接丢弃整条）。
+ * 会被官方丢弃的 skill 仍能给出可读描述（官方 provider 此时直接丢弃整条）。
  * @param raw - 文件原始内容。
  */
 export declare function documentParts(raw: string): DocumentParts;

@@ -7,8 +7,8 @@
  * 所以切换会话不会留下过期作用域。
  */
 
-/** 列表筛选：全部 / 本项目已屏蔽 / 未生效（DSH 会忽略的）。 */
-export type PanelFilter = 'all' | 'blocked' | 'broken'
+/** 列表筛选：全部 / 本项目已屏蔽。判定（有效/错误）是行内徽标，不做筛选页。 */
+export type PanelFilter = 'all' | 'blocked'
 
 /** store 的快照形状。 */
 export interface PanelState {

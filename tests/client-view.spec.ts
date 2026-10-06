@@ -12,7 +12,7 @@ import type { ClientContext } from '../src/context-types.ts'
 import { SkillSwitchView } from '../src/client/SkillSwitchView.tsx'
 import { createSkillSwitchStore } from '../src/client/state.ts'
 import { attachLocale } from '../src/client/locales.ts'
-import { sourceLabel, issueLabel } from '../src/client/SkillSwitchPanel.tsx'
+import { sourceLabel, issueLabel, verdictLabel } from '../src/client/SkillSwitchPanel.tsx'
 
 afterEach(() => { attachLocale(undefined) })
 
@@ -43,11 +43,12 @@ function render(sessionId: string, byId: Record<string, { id: string; cwd?: stri
 }
 
 describe('会话视图标签 body', () => {
-  it('渲染面板骨架：三个筛选 chip + 搜索框，而不是"暂无会话"', () => {
+  it('渲染面板骨架：两个筛选 chip + 搜索框，而不是"暂无会话"', () => {
     const markup = render('session-2', { 'session-2': { id: 'session-2', cwd: '/tmp/project' } })
     expect(markup).toContain('全部')
     expect(markup).toContain('已屏蔽')
-    expect(markup).toContain('未生效')
+    // 「未生效」筛选与徽标已按用户要求删除：出现即回归。
+    expect(markup).not.toContain('未生效')
     expect(markup).toContain('搜索名字或描述')
     expect(markup).toContain('恢复本项全部')
     expect(markup).not.toContain('暂无会话')
@@ -86,7 +87,7 @@ describe('来源与原因的本地化映射', () => {
     expect(sourceLabel('some-provider')).toBe('some-provider')
   })
 
-  it('六种"未生效"原因都有可读文案', () => {
+  it('七种 frontmatter 事实都有可读文案（作为「错误」的解释）', () => {
     attachLocale({ getSnapshot: () => ({ active: 'zh' }) })
     expect(issueLabel('missing-frontmatter')).toContain('frontmatter')
     expect(issueLabel('invalid-frontmatter')).toContain('解析失败')
@@ -94,5 +95,13 @@ describe('来源与原因的本地化映射', () => {
     expect(issueLabel('invalid-name')).toContain('kebab-case')
     expect(issueLabel('missing-description')).toContain('description')
     expect(issueLabel('invalid-entry-name')).toContain('kebab-case')
+    expect(issueLabel('invalid-invocation')).toContain('invocation')
+  })
+
+  it('三条判定原因都有可读文案，且互不混淆', () => {
+    attachLocale({ getSnapshot: () => ({ active: 'zh' }) })
+    expect(verdictLabel('not-in-registry')).toContain('注册表')
+    expect(verdictLabel('model-not-invocable')).toContain('模型')
+    expect(verdictLabel('user-not-invocable')).toContain('用户')
   })
 })

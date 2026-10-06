@@ -7,11 +7,13 @@ DSH（DeepSeek Harness）的**项目级 skill 开关 + 全局删除**插件。�
   `<项目根>/.dsh/skill-switches/` 下的开关文件）。
 - **删除全部副本**：把一条 skill 在所有已知根里的副本一次删干净，删完面板与
   runtime 目录里都不再出现。
-- **看得见"未生效"的 skill**：缺 `name`/`description`、YAML 坏掉的 skill 在
-  官方 provider 眼里会被整条丢弃（只留一条 warn 日志）；本插件仍然把它们列出来、
-  标出原因，并能一键补齐 frontmatter 让它们重新生效。
+- **有效 / 错误判定**：每条 skill 都标出它对这个会话是否"有效"——
+  **有效 = A 在 skill 注册表里 ∧ B 模型可主动调用 ∧ C 用户可显式调用**；
+  任一条不成立就是「错误」，并把**是哪一条**（以及缺哪个 frontmatter 字段）写在行内。
+  官方 provider 会整条丢弃的 skill（缺 `name`/`description`、YAML 坏掉）因此
+  仍然看得见、看得懂——这是相对 dsh-skills-manager 的可见性优化。
 
-> 这是 v1（`dsh-skill-switch` 0.1.x，纯文件协议、无界面）的 v0.2。v1 的
+> 这是 v1（`dsh-skill-switch` 0.1.x，纯文件协议、无界面）的 v0.3。v1 的
 > **开关文件协议与屏蔽语义一字不改**，升级不需要迁移任何已存在的开关目录。
 
 ## 为什么需要它
@@ -26,22 +28,24 @@ DSH 的 skill 是全局发现 + 会话注入的：装了的 skill 对所有会�
 dsh-skills-manager，它排在 Skills 管理器之后）。面板由三部分组成：
 
 ```
-┌ 全部 12   已屏蔽 2   未生效 1 ┐        [ 搜索… ]  [ 恢复本项全部 ]
-项目：/Users/me/proj
-开关目录：/Users/me/proj/.dsh/skill-switches · mode=deny
+┌ 全部 12   已屏蔽 2 ┐                   [ 搜索… ]  [ 恢复本项全部 ]
 ──────────────────────────────────────────────────────────────
- 已屏蔽  [取消屏蔽 ▣] [操作]  review                        项目 .dsh
-        代码审查流程
- 未生效  [屏蔽    ▢] [操作]  my-broken-skill                项目 .dsh
-        frontmatter 缺少 description · 描述取自正文首段
+ 项目 .dsh  有效   [取消屏蔽 ▣] [操作]  review
+            代码审查流程
+ 项目 .dsh  错误   [屏蔽    ▢] [操作]  my-broken-skill
+            不在 skill 注册表里（DSH 不会加载它） · frontmatter 缺少 description
 ```
 
-- **左侧筛选 chip**：全部 / 已屏蔽 / 未生效（各自带计数），外加名字+描述搜索。
-- **卡片左侧**：名字、来源徽标、状态徽标、描述，以及一行诊断
-  （未生效原因、名字取自目录名、副本数量、名字不合法无法开关等）。
+- **左侧筛选 chip**：全部 / 已屏蔽（各自带计数），外加名字+描述搜索。
+- **卡片左侧**：名字、来源徽标、**有效/错误徽标**、描述，以及一行事实
+  （判定失败的是 A/B/C 哪一条、frontmatter 缺什么、名字取自目录名、副本数量、
+  名字不合法无法开关等）。
 - **卡片右侧**：一个纯 CSS 开关键（点一下就是一次切换）+ 「操作」下拉菜单。
-- **操作菜单**：「补齐 frontmatter」（仅未生效项）与「删除（全部副本）」；两者都有
-  二次确认，且会把将受影响的文件路径一条条列出来。
+- **操作菜单**：「补齐 frontmatter」（仅 frontmatter 有问题的项）与
+  「删除（全部副本）」；两者都有二次确认，且会把将受影响的文件路径一条条列出来。
+
+顶部**不再显示**项目绝对路径、开关目录与 `mode`：那是内部实现细节，用户无法据此
+行动（开关目录的语义仍在「恢复本项全部」的二次确认里说明）。
 
 ## 安装
 
@@ -169,7 +173,29 @@ rm -rf .dsh/skill-switches                     # 全部恢复
   wire code 出本地化文案，所以中文界面不会混进英文细节、英文界面也不会混进中文。
 - 删除成功后会顺手清掉本项目里该名字的开关文件，避免"删了再装回来还带着旧屏蔽"。
 
-## 注意点：让"未生效"的 skill 可见
+## 注意点：判定「有效 / 错误」的口径
+
+**有效 = A 在目录里 ∧ B 模型可主动调用 ∧ C 用户可显式调用**；任一条不成立 = 「错误」，
+且面板会写出是哪一条：
+
+| 失败项 | 含义 | 面板文案 |
+|--------|------|----------|
+| A `not-in-registry` | 这个会话的 skill 注册表里没有它 → DSH 不会加载 | 不在 skill 注册表里（DSH 不会加载它） |
+| B `model-not-invocable` | `invocation.modelInvocable === false`（`disable-model-invocation: true`） | 模型不能主动调用（disable-model-invocation） |
+| C `user-not-invocable` | `invocation.userInvocable === false`（`user-invocable: false`） | 用户不能显式调用（user-invocable: false） |
+
+**A 必须按会话的观察者作用域读。** `SkillRegistry.snapshot()` 的 `scope` 决定它读哪些
+layer（官方注释："omitted reads the global layer alone"）；桌面 profile 里顶层
+`skill-filesystem` 是 `disabled` 的，真正的 provider 注册在 agent preset 的 standing
+scope 上。所以面板用 `ctx.agents.get(sessionId)` 拿到该会话的 agent（在 DSH 里
+**agent 对象本身就是它的 ScopeKey**：`scopeTarget(agent, agent)`），再以
+`snapshot({ cwd, scope: agent })` 读取——否则只能读到全局层（实测 37 行里只剩 3 条
+内置 skill），把每个用户 skill 都误判成「错误」。
+
+拿不到活跃 agent（归档/未 hydrate 的会话）或目录读取失败时，面板**不显示判定列**，
+wire 上也不产出任何错误项：把"我不知道"渲染成"它是错的"是欺骗。
+
+### 为什么官方会丢弃某些 skill（A 失败的解释器）
 
 `@deepseek-ai/dsh-skill-filesystem` 的 `parseSkillFile()` 要求 frontmatter 同时具有
 合法的 kebab-case `name` 与非空 `description`，否则**整条丢弃**。后果是这类 skill
@@ -190,15 +216,15 @@ rm -rf .dsh/skill-switches                     # 全部恢复
 判定口径是**逐字对齐**官方 `parseSkillFile()` 的：只有非空 `string` 才算字段存在
 （不 trim、不把数字转字符串），`disable-model-invocation` / `user-invocable` 只认
 boolean / 1 / 0 / true / false / yes / no / on / off，出现 `disableModelInvocation`
-一类的遗留键即视为整条非法。所以面板说的"生效 / 未生效"和 runtime 的真实行为一致。
+一类的遗留键即视为整条非法。
 
-如果某条 skill 磁盘上有、注册表里没有、frontmatter 又看不出问题，面板会如实标
-「未生效 · 原因未知」；runtime 目录整个读不出来时另有一条横幅提示
-「生效状态不可信」。宁可说"不知道"，也不把不确定说成"正常"。
+这些 `issues` 不再是独立徽标，而是 **A 失败的证据**：一行显示成
+`错误 · 不在 skill 注册表里（DSH 不会加载它） · frontmatter 缺少 description`。
+一行只说"错误"、不说为什么，是不可行动的；而上一版在凭据不足时说的
+「未生效 · 原因未知」，已经把"我没读到"当成了结论——两者都去掉了。
 
-面板把这些问题显示成「未生效」徽标 + 具体原因，并提供「补齐 frontmatter」：
-只改 frontmatter（没有就插到文首，坏的整段替换），正文一字不动。修复后
-`issues` 当场清空、徽标消失，provider 下一次目录刷新就会重新认领它。
+「补齐 frontmatter」仍然只改 frontmatter（没有就插到文首，坏的整段替换），正文
+一字不动；修复后 `issues` 清空、判定转「有效」。
 
 ## 配置
 
@@ -256,9 +282,9 @@ client 半体 (lib/client.js)
 ## 测试
 
 ```sh
-pnpm test              # 先 pnpm build 再 vitest：135 项（纯逻辑 + 真实 cordis 组合 + 客户端接线/渲染 + 产物加载）
+pnpm test              # 先 pnpm build 再 vitest：151 项（纯逻辑 + 真实 cordis 组合 + 客户端接线/渲染 + 产物加载）
 pnpm test:unit         # 只跑测试（用现有 lib/，改过 src 请先 build）
-pnpm verify:installed  # 装进 profile 之后：拿 App 同版本运行时验那份已安装产物（15 项）
+pnpm verify:installed  # 装进 profile 之后：拿 App 同版本运行时验那份已安装产物（23 项，含按作用域判定的端到端复现）
 pnpm typecheck   # tsc --noEmit
 pnpm build       # lib/index.js + lib/client.js + lib/types
 ```
@@ -276,8 +302,12 @@ frontmatter 的 skill 确实在注册表里没有而在面板里有；删除后�
   的历史消息。
 - 删除/补齐之后，`SkillRegistry` 的目录缓存由 provider 的**文件监视器**刷新
   （`dsh-skill-filesystem` 的 `watch` 默认开启）。面板自身的事实来自磁盘扫描，所以
-  「未生效」徽标与列表当场就正确；如果部署里把 `watch` 关掉了，runtime 目录要等到
-  下一次目录重建才跟上。
+  判定与 frontmatter 事实当场就正确；如果部署里把 `watch` 关掉了，判定里的 A
+  （在不在注册表）要等到下一次目录重建才跟上。
+- 判定里的 A 依赖**活跃 agent**：会话归档/未 hydrate 时面板不显示判定列，而不是把
+  每一行都说成错误——宁可不说，也不说错。
+- 升级到 0.3 需要**重启宿主**（host 半体是启动时加载的）。过渡期若只刷新页面而没
+  重启，客户端对缺失的 `errors` 字段按空处理，不会白屏。
 - `skill-library` 根**不参与** runtime 目录（官方 provider 不扫它），所以库里的
   skill 会以「未分配」出现；它仍然会被"全局删除"一并清掉，这正是"删干净"的一部分。
 - 删除与补齐都走库语义：`fs.rm` 对符号链接只摘链接本身（不穿透删目标内容），
