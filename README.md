@@ -45,17 +45,55 @@ dsh-skills-manager，它排在 Skills 管理器之后）。面板由三部分组
 
 ## 安装
 
+标准入口就是 `dsh plugin`（它把参数转发给 profile 目录里的 pnpm，成功后把本包
+追加进 `dsh.profile.bundles`）：
+
 ```sh
 # 本地路径（开发/自用）
-dsh plugin --profile desktop add /absolute/path/to/dsh-skill-switch
+dsh plugin --profile desktop add -w /absolute/path/to/dsh-skill-switch
 
 # 发布到 npm 后
-dsh plugin --profile desktop add dsh-skill-switch
+dsh plugin --profile desktop add -w dsh-skill-switch
 ```
 
-> pnpm 9 遇到 `ERR_PNPM_ADDING_TO_ROOT` 就加 `-w`。
+### 本机实测会踩的两个坑
 
-装完后**重启 DSH**（新增 bundle 影响 host 侧组合，仅客户端热加载不够）。
+1. **`ERR_PNPM_ADDING_TO_ROOT`** —— profile 本身是一个 pnpm workspace 根
+   （`pnpm-workspace.yaml` 里 `packages: ['.']`），因此 `add` / `remove` /
+   `update` / `install` 必须带 `-w`。
+2. **`ERR_PNPM_UNEXPECTED_STORE`** —— `dsh plugin` 用的是 **PATH 上的 pnpm**，
+   而 profile 是用安装自带的 pnpm 装的。本机 App 是 0.2.0-rc.2，其
+   `desktop-runtime.json` 声明 `pnpmVersion: 11.7.0`（store `v11`、
+   `nodeLinker: hoisted`），但 PATH 上的 `/usr/local/bin/pnpm` 是 **9.6.0**
+   （store `v3`），于是报
+   `dependencies are currently linked from /…/store/v11, pnpm now wants to use /…/store/v3`。
+   解决：让 `dsh plugin` 看到 11.7.0 的 pnpm。
+
+两个坑可以一次绕开——用随本机装好的小包装脚本 `~/.dsh/plugin-src/dsh-plugin`：
+
+```sh
+~/.dsh/plugin-src/dsh-plugin add /absolute/path/to/dsh-skill-switch
+~/.dsh/plugin-src/dsh-plugin ls
+~/.dsh/plugin-src/dsh-plugin remove dsh-skill-switch
+```
+
+它从 profile 自己的 `node_modules/.modules.yaml` 读出 pnpm 版本（本机 11.7.0），
+用 corepack 拉起同一版本，并对写操作自动补 `-w`。想手动复现等价于：
+
+```sh
+cd ~/.dsh/profiles/desktop
+corepack pnpm@11.7.0 add -w /absolute/path/to/dsh-skill-switch
+# 然后把 "dsh-skill-switch" 追加进 package.json 的 dsh.profile.bundles
+```
+
+> **`desktop` profile 不能由 CLI 启动/转储**：0.2 的 CLI 对
+> `--profile desktop` 的 boot / `--dump-config` 会直接拒绝
+> （`profile "desktop" is managed exclusively by the Electron application`），
+> 基础 bundle 由 App 运行时提供。所以组合与启动校验只能在 App 里做；CLI 侧
+> 只有 `plugin` 子命令被允许。
+
+装完后**必须重启 DSH**：新增 bundle 改变 host 侧组合，仅客户端热加载不够。
+重启后视图标签条里会出现「Skill 开关」。
 
 ## 功能一：项目级屏蔽
 
