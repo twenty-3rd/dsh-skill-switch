@@ -43,6 +43,31 @@ dsh-skills-manager，它排在 Skills 管理器之后）。面板由三部分组
 - **卡片右侧**：一个纯 CSS 开关键（点一下就是一次切换）+ 「操作」下拉菜单。
 - **操作菜单**：「补齐 frontmatter」（仅 frontmatter 有问题的项）与
   「删除（全部副本）」；两者都有二次确认，且会把将受影响的文件路径一条条列出来。
+- **点开一行 → 详情（只读）**：点卡片左侧的事实区（名字 / 描述）进入详情页，
+  「返回列表」回到列表（筛选与搜索词保留）。开关键与「操作」按钮不在事实区里，
+  点它们不会跳走（名字不合法、不能写开关的行也照样能看详情）。
+
+```
+┌ [返回列表]  demo  项目 .dsh  有效 ┐
+描述
+  代码审查流程
+判定依据
+  在 skill 注册表里（条件 A）    是
+  模型可主动调用（条件 B）      是
+  用户可显式调用（条件 C）      是
+存在的根位置 · 2 处副本
+  项目 .dsh  当前生效  目录 bundle  会被 DSH 加载  优先级 100
+    根: /proj/.dsh/skills
+    文件: /proj/.dsh/skills/demo/SKILL.md
+  用户  目录 bundle  会被 DSH 加载  优先级 400
+    根: /home/me/.dsh/skills
+    文件: /home/me/.dsh/skills/demo/SKILL.md
+```
+
+详情只做"把列表里被折叠掉的事实摊开"：列表每行只显示**胜出副本**（rank 最小者），
+同名 skill 散在共享根 / DSH 根 / 库根里时，详情是唯一能看到另外几处的地方——包括
+每处副本**各自**的 frontmatter 问题（同一个名字在不同根里状态可能不同）、会不会被
+DSH 实际加载、能不能删。它**不带任何写动作**（屏蔽 / 删除 / 补齐仍在列表里）。
 
 顶部**不再显示**项目绝对路径、开关目录与 `mode`：那是内部实现细节，用户无法据此
 行动（开关目录的语义仍在「恢复本项全部」的二次确认里说明）。
@@ -282,9 +307,9 @@ client 半体 (lib/client.js)
 ## 测试
 
 ```sh
-pnpm test              # 先 pnpm build 再 vitest：151 项（纯逻辑 + 真实 cordis 组合 + 客户端接线/渲染 + 产物加载）
+pnpm test              # 先 pnpm build 再 vitest：171 项（纯逻辑 + 真实 cordis 组合 + 客户端接线/渲染 + 产物加载）
 pnpm test:unit         # 只跑测试（用现有 lib/，改过 src 请先 build）
-pnpm verify:installed  # 装进 profile 之后：拿 App 同版本运行时验那份已安装产物（23 项，含按作用域判定的端到端复现）
+pnpm verify:installed  # 装进 profile 之后：拿 App 同版本运行时验那份已安装产物（25 项，含按作用域判定与详情视图产物）
 pnpm typecheck   # tsc --noEmit
 pnpm build       # lib/index.js + lib/client.js + lib/types
 ```

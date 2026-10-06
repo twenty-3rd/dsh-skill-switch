@@ -211,6 +211,24 @@
   gap: 2px;
 }
 
+/* 事实区本身是「查看详情」的按钮（开关键与「操作」按钮在它外面，所以点它们
+   永远不会跳走）。button 的默认外观在这里全部复位，布局仍由 .skillMain 负责。 */
+.skillOpen {
+  padding: 0;
+  border: none;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.skillOpen:focus-visible {
+  outline: 2px solid var(--dsw-alias-brand-primary, #1664ff);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
 .skillNameRow {
   display: flex;
   align-items: center;
@@ -437,5 +455,116 @@
   font-size: 11px;
   line-height: 16px;
   color: var(--dsw-alias-state-error-primary, #d93838);
+  word-break: break-all;
+}
+
+/* ---- 详情视图：点开一行后的只读页（名称 / 描述 / 每一处盘上副本） ---- */
+
+.skillDetail {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.detailHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.detailTitle {
+  margin: 0;
+  font-size: 15px;
+  line-height: 22px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-primary, #1a1a1a);
+  word-break: break-all;
+}
+
+/* 小节标题：描述 / 判定依据 / 存在的根位置。 */
+.detailSection {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-secondary, #555);
+}
+
+.detailDesc {
+  margin: 0;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-secondary, #555);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* 判定依据：条件 A/B/C 的原始事实，标签与取值成对排列。 */
+.detailFacts {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-secondary, #555);
+}
+
+.detailFact {
+  display: flex;
+  gap: 6px;
+}
+
+.detailFactValue {
+  color: var(--dsw-alias-label-primary, #1a1a1a);
+  font-weight: 500;
+}
+
+.copyList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.copyItem {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px 10px;
+  border: 1px solid var(--dsw-alias-border-l2, rgba(0, 0, 0, 0.1));
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-2, #fff);
+}
+
+.copyHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+
+.copyTag {
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-tertiary, #888);
+}
+
+/* 路径用等宽字体、允许在任意字符处折行：绝对路径很长，截断就失去意义。 */
+.copyPath {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-primary, #1a1a1a);
+  word-break: break-all;
+}
+
+.copyPathDim {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-tertiary, #888);
   word-break: break-all;
 }

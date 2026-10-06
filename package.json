@@ -1,7 +1,7 @@
 {
   "name": "dsh-skill-switch",
-  "version": "0.3.0",
-  "description": "DSH web plugin: project-level skill switches with a panel — one-click block/unblock per project, global skill deletion, and a valid/error verdict per skill (in registry + model-invocable + user-invocable, with the failing condition shown). 项目级 skill 开关 + 全局删除 + 有效/错误判定面板。",
+  "version": "0.4.0",
+  "description": "DSH web plugin: project-level skill switches with a panel — one-click block/unblock per project, global skill deletion, a valid/error verdict per skill (in registry + model-invocable + user-invocable, with the failing condition shown), and a read-only detail view listing every on-disk root location of a skill. 项目级 skill 开关 + 全局删除 + 有效/错误判定 + 每处根位置详情面板。",
   "type": "module",
   "license": "MIT",
   "main": "lib/index.js",

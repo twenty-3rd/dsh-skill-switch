@@ -174,6 +174,18 @@ check(
 const requires = [...new Set([...clientCode.matchAll(/require\("([^"]+)"\)/g)].map(m => m[1]))].sort()
 check('客户端产物只依赖平台模块', requires.join(',') === 'react,react/jsx-runtime', requires.join(','))
 
+// 详情视图（0.4.0）：确认 profile 里那份**已安装产物**就是这次构建，而不是上一次的
+// 缓存产物。文案随 zh 字典进产物，所以这是对"装进去的客户端半体已包含新功能"的
+// 直接证据；会话里的 host 半体与此无关（本功能是纯客户端的）。
+check(
+  '客户端产物含详情视图（点开一行 → 存在的根位置）',
+  ['存在的根位置', '返回列表', '当前生效', 'DSH 不读它', '受保护，不会删除'].every(text => clientCode.includes(text)),
+)
+check(
+  '详情视图的根标签文案在产物里（含非 runtime 的「Skill 库」）',
+  ['项目 .dsh', '共享', 'Skill 库', '内置'].every(text => clientCode.includes(text)),
+)
+
 // ── 判定（有效/错误）：必须按**会话作用域**读目录 ─────────────────────────────
 //
 // 生产拓扑与这里的旧 setup 不同：桌面 profile 里顶层 skill-filesystem 是 disabled

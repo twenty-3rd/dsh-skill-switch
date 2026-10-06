@@ -1,6 +1,7 @@
 /**
- * 卡片渲染测试：把 SkillCard 单独做服务端渲染，覆盖列表里每条会分支的路径
- * ——判定徽标（有效/错误）、错误原因、一键开关键的可用性、以及两个二次确认菜单。
+ * 卡片与详情渲染测试：把 SkillCard / SkillDetail 单独做服务端渲染，覆盖列表里
+ * 每条会分支的路径 —— 判定徽标（有效/错误）、错误原因、一键开关键的可用性、
+ * 两个二次确认菜单、以及"点开详情 → 每一处盘上副本"。
  *
  * 服务端渲染意味着 effect（以及随后的 API 调用）不会执行，断言只针对渲染结果；
  * 这也让它能顺带守住"组件里不写死中文/不崩在空字段上"。
@@ -11,9 +12,10 @@
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { SkillCard } from '../src/client/SkillSwitchPanel.tsx'
+import { SkillCard, SkillDetail, selectedRow } from '../src/client/SkillSwitchPanel.tsx'
 import type { SkillCardMenu } from '../src/client/SkillSwitchPanel.tsx'
-import type { SkillCopy, SkillRow, SkillVerdictError } from '../src/client/api.ts'
+import type { PanelData, SkillCopy, SkillRow, SkillVerdictError } from '../src/client/api.ts'
+import { createSkillSwitchStore } from '../src/client/state.ts'
 import { attachLocale } from '../src/client/locales.ts'
 
 afterEach(() => { attachLocale(undefined) })
@@ -86,6 +88,7 @@ function renderCard(
     showVerdict,
     busy,
     menu,
+    onOpen: vi.fn(),
     onToggle: vi.fn(),
     onOpenMenu: vi.fn(),
     onAskDelete: vi.fn(),
@@ -94,6 +97,41 @@ function renderCard(
     onConfirmRepair: vi.fn(),
     onCloseMenu: vi.fn(),
   }))
+}
+
+/** 渲染详情页。 */
+function renderDetail(overrides: Partial<SkillRow> = {}, showVerdict = true): string {
+  attachLocale({ getSnapshot: () => ({ active: 'zh' }) })
+  return renderToStaticMarkup(createElement(SkillDetail, {
+    row: row(overrides),
+    showVerdict,
+    onBack: vi.fn(),
+  }))
+}
+
+/** 一份最小可用的面板数据（只填详情分支用得到的字段）。 */
+function panel(skills: SkillRow[]): PanelData {
+  return {
+    cwd: '/proj',
+    projectRoot: '/proj',
+    switchesPath: '/proj/.dsh/skill-switches',
+    mode: 'deny',
+    switchesPresent: false,
+    off: [],
+    on: [],
+    ignored: [],
+    roots: [],
+    skills,
+    catalogComplete: true,
+    catalogError: false,
+    verdictAvailable: true,
+    lastAction: null,
+  }
+}
+
+/** 某段文字在 markup 里出现的次数（断言"只标一处"时用）。 */
+function countOf(markup: string, text: string): number {
+  return markup.split(text).length - 1
 }
 
 describe('SkillCard：事实区', () => {
@@ -265,6 +303,7 @@ describe('SkillCard：英文 locale', () => {
       showVerdict: true,
       busy: false,
       menu: { name: 'demo', mode: 'actions' },
+      onOpen: vi.fn(),
       onToggle: vi.fn(),
       onOpenMenu: vi.fn(),
       onAskDelete: vi.fn(),
@@ -309,5 +348,198 @@ describe('SkillCard：诚实性（回归）', () => {
     const markup = renderCard({ inCatalog: false }, null, false, false)
     expect(markup).not.toContain('错误')
     expect(markup).not.toContain('不在 skill 注册表里')
+  })
+
+  it('详情页同样不出现保留词', () => {
+    for (const markup of [renderDetail(), renderDetail({ inCatalog: false }, false)]) {
+      expect(markup).not.toContain('未生效')
+      expect(markup).not.toContain('原因未知')
+    }
+  })
+})
+
+describe('SkillCard：进入详情的入口', () => {
+  it('事实区带「查看详情」的可见名（开关键与操作按钮不在事实区里）', () => {
+    const markup = renderCard()
+    expect(markup).toContain('demo · 查看详情')
+  })
+
+  it('名字不合法时也能进详情（进详情不是写开关，不受 blockable 限制）', () => {
+    const markup = renderCard({ blockable: false, name: 'Bad_Name' })
+    expect(markup).toContain('Bad_Name · 查看详情')
+  })
+})
+
+describe('SkillDetail：详情页', () => {
+  it('名称、描述与「存在的根位置」都在', () => {
+    const markup = renderDetail()
+    expect(markup).toContain('demo')
+    expect(markup).toContain('示例描述')
+    expect(markup).toContain('存在的根位置')
+    expect(markup).toContain('返回列表')
+    expect(markup).toContain('有效')
+  })
+
+  it('每一处副本的根目录与具体文件都列出来，胜出副本标「当前生效」', () => {
+    const markup = renderDetail({
+      copies: [
+        copy(),
+        copy({
+          source: 'user-dsh',
+          rank: 400,
+          rootPath: '/home/me/.dsh/skills',
+          directory: '/home/me/.dsh/skills/demo',
+          path: '/home/me/.dsh/skills/demo/SKILL.md',
+        }),
+      ],
+    })
+    expect(markup).toContain('2 处副本')
+    expect(markup).toContain('/proj/.dsh/skills')
+    expect(markup).toContain('/proj/.dsh/skills/demo/SKILL.md')
+    expect(markup).toContain('/home/me/.dsh/skills')
+    expect(markup).toContain('/home/me/.dsh/skills/demo/SKILL.md')
+    // 胜出副本只有一个（rank 最小）："当前生效"必须只标一处，否则用户无法判断
+    // 列表里的名字/描述/来源到底取自哪里。
+    expect(countOf(markup, '当前生效')).toBe(1)
+  })
+
+  it('非 runtime 副本与受保护副本各自标注', () => {
+    const markup = renderDetail({
+      copies: [
+        copy(),
+        copy({ source: 'library', rank: 1000, live: false, rootPath: '/home/me/.dsh/skill-library', directory: '/home/me/.dsh/skill-library/demo', path: '/home/me/.dsh/skill-library/demo/SKILL.md' }),
+        copy({ source: 'bundled', rank: 600, deletable: false, rootPath: '/app/bundled', directory: '/app/bundled/demo', path: '/app/bundled/demo/SKILL.md' }),
+      ],
+    })
+    expect(markup).toContain('会被 DSH 加载')
+    expect(markup).toContain('DSH 不读它')
+    expect(markup).toContain('受保护，不会删除')
+    expect(markup).toContain('优先级 1000')
+    expect(markup).toContain('Skill 库')
+  })
+
+  it('单文件副本标「单文件 .md」，目录副本标「目录 bundle」', () => {
+    const markup = renderDetail({
+      copies: [copy({ form: 'flat', path: '/proj/.dsh/skills/demo.md', directory: '/proj/.dsh/skills' })],
+    })
+    expect(markup).toContain('单文件 .md')
+    expect(markup).toContain('/proj/.dsh/skills/demo.md')
+  })
+
+  it('每处副本自己的 frontmatter 问题分别列出（同一个名字在不同根里状态可能不同）', () => {
+    const markup = renderDetail({
+      copies: [
+        copy(),
+        copy({ source: 'user-dsh', rank: 400, rootPath: '/home/me/.dsh/skills', path: '/home/me/.dsh/skills/demo/SKILL.md', issues: ['missing-description'] }),
+      ],
+    })
+    expect(markup).toContain('frontmatter 缺少 description')
+  })
+
+  it('条目名与名字不同时说明条目名（「补齐 frontmatter」的候选名）', () => {
+    const markup = renderDetail({
+      nameSource: 'entry',
+      copies: [copy({ entryName: 'demo-dir' })],
+    })
+    expect(markup).toContain('条目名 demo-dir')
+    expect(markup).toContain('名字取自目录名')
+  })
+
+  it('磁盘上没有副本（运行时提供）：说明清楚并给出 provider', () => {
+    const markup = renderDetail({
+      form: 'virtual',
+      source: 'bundled',
+      provider: 'dsh-office',
+      copies: [],
+      deletable: false,
+    })
+    expect(markup).toContain('由运行时提供，磁盘上没有副本')
+    expect(markup).toContain('dsh-office')
+    expect(markup).toContain('运行时')
+  })
+
+  it('判定依据列出 A/B/C 三条原始事实', () => {
+    const markup = renderDetail({
+      inCatalog: false,
+      invocation: { modelInvocable: false, userInvocable: true },
+    })
+    expect(markup).toContain('在 skill 注册表里（条件 A）')
+    expect(markup).toContain('模型可主动调用（条件 B）')
+    expect(markup).toContain('用户可显式调用（条件 C）')
+  })
+
+  it('拿不到观察者作用域时不显示判定依据（否则会把"没读到"说成"不在注册表里"）', () => {
+    const markup = renderDetail({ inCatalog: false }, false)
+    expect(markup).not.toContain('判定依据')
+    expect(markup).not.toContain('条件 A')
+    expect(markup).not.toContain('错误')
+    // 但"存在的根位置"是磁盘事实，与判定无关，必须照常显示。
+    expect(markup).toContain('存在的根位置')
+    expect(markup).toContain('/proj/.dsh/skills')
+  })
+
+  it('英文 locale 下整页切到英文', () => {
+    attachLocale({ getSnapshot: () => ({ active: 'en' }) })
+    const markup = renderToStaticMarkup(createElement(SkillDetail, {
+      row: row(),
+      showVerdict: true,
+      onBack: vi.fn(),
+    }))
+    expect(markup).toContain('Back to list')
+    expect(markup).toContain('Existing root locations')
+    expect(markup).toContain('Description')
+    expect(markup).not.toContain('存在的根位置')
+  })
+})
+
+describe('selectedRow：详情分支（列表筛选不该影响详情）', () => {
+  const demo = row({ name: 'demo' })
+  const other = row({ name: 'other' })
+
+  it('list 视图不选任何行', () => {
+    expect(selectedRow(panel([demo]), 'list', 'demo')).toBeUndefined()
+  })
+
+  it('detail 视图命中时返回那一行', () => {
+    expect(selectedRow(panel([demo, other]), 'detail', 'other')?.name).toBe('other')
+  })
+
+  it('detail 视图但数据里没有这个名字：回落列表（不渲染空壳详情）', () => {
+    expect(selectedRow(panel([demo]), 'detail', 'gone')).toBeUndefined()
+  })
+
+  it('数据还没加载：不选任何行', () => {
+    expect(selectedRow(null, 'detail', 'demo')).toBeUndefined()
+  })
+})
+
+describe('面板 store：列表 / 详情切换', () => {
+  it('showDetail 设视图与选中名，backToList 复位', () => {
+    const store = createSkillSwitchStore()
+    expect(store.getSnapshot()).toMatchObject({ view: 'list', selectedName: '' })
+    store.actions.showDetail('demo')
+    expect(store.getSnapshot()).toMatchObject({ view: 'detail', selectedName: 'demo' })
+    store.actions.backToList()
+    expect(store.getSnapshot()).toMatchObject({ view: 'list', selectedName: '' })
+  })
+
+  it('进出详情不丢筛选与搜索词（返回后列表还是刚才那一屏）', () => {
+    const store = createSkillSwitchStore()
+    store.actions.setFilter('blocked')
+    store.actions.setQuery('demo')
+    store.actions.showDetail('demo')
+    store.actions.backToList()
+    expect(store.getSnapshot()).toMatchObject({ filter: 'blocked', query: 'demo' })
+  })
+
+  it('订阅收到变化，退订后不再收到（视图切换会触发重渲染）', () => {
+    const store = createSkillSwitchStore()
+    const seen: string[] = []
+    const off = store.subscribe(() => seen.push(store.getSnapshot().view))
+    store.actions.showDetail('demo')
+    store.actions.backToList()
+    off()
+    store.actions.showDetail('demo')
+    expect(seen).toEqual(['detail', 'list'])
   })
 })

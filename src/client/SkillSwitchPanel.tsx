@@ -8,6 +8,11 @@
  * 视觉与交互沿用同一个会话视图座位的语言（同款工具栏、卡片、徽标、
  * 「操作」下拉菜单与二次确认），所以两个面板切换时手感一致。
  *
+ * 面内两个视图：**列表**（一键屏蔽 / 恢复 / 删除）与**详情**（只读：名称、
+ * 描述、以及这个名字在磁盘上存在的每一处根位置）。详情不引入路由，也不引入
+ * 编辑能力——它的职责只是把列表里被折叠掉的事实摊开（同名 skill 往往散在
+ * 共享根 / DSH 根 / 库根里，列表只显示"胜出副本"）。
+ *
  * 数据全部来自 host 半体的 /skill-switch API；每次变更都用服务端回传的完整
  * 面板数据替换本地状态，避免第二次请求引入的竞态。
  */
@@ -225,57 +230,12 @@ export function SkillSwitchBody(props: { store: PanelStore; scope: PanelScope })
   const errorCount = (data?.skills ?? []).filter(row => (row.errors ?? []).length > 0).length
   const switchCount = (data?.off.length ?? 0) + (data?.on.length ?? 0)
 
+  // 详情挑的是**完整表**里的那一行，不是筛过的 rows：筛选只属于列表，
+  // 详情页不该因为切了筛选而变空。
+  const selected = selectedRow(data, state.view, state.selectedName)
+
   return (
     <>
-      <div className={css.toolbar}>
-        <div className={css.filters}>
-          <FilterChip
-            label={t('filterAll')}
-            count={total}
-            active={state.filter === 'all'}
-            onClick={() => store.actions.setFilter('all')}
-          />
-          <FilterChip
-            label={t('filterBlocked')}
-            count={blockedCount}
-            active={state.filter === 'blocked'}
-            onClick={() => store.actions.setFilter('blocked')}
-          />
-        </div>
-        <div className={css.actions}>
-          <input
-            className={css.searchInput}
-            value={state.query}
-            placeholder={t('searchPlaceholder')}
-            aria-label={t('searchPlaceholder')}
-            onChange={(event) => store.actions.setQuery(event.target.value)}
-          />
-          <button
-            type="button"
-            className={css.ghostButton}
-            disabled={busyGlobal || data === null || switchCount === 0}
-            title={t('resetAll')}
-            onClick={() => setConfirmReset(true)}
-          >
-            {t('resetAll')}
-          </button>
-        </div>
-      </div>
-
-      {confirmReset && (
-        <div className={css.notice}>
-          {data?.mode === 'allow' ? t('resetConfirmAllow') : t('resetConfirm')}
-          <div className={css.menuActions}>
-            <button type="button" className={`${css.ghostButton} ${css.dangerButton}`} disabled={busyGlobal} onClick={() => { void resetAll() }}>
-              {busyGlobal ? '…' : t('confirm')}
-            </button>
-            <button type="button" className={css.ghostButton} disabled={busyGlobal} onClick={() => setConfirmReset(false)}>
-              {t('cancel')}
-            </button>
-          </div>
-        </div>
-      )}
-
       {error !== null && <div className={css.error}>{error}</div>}
       {notice !== null && <div className={css.notice}>{notice}</div>}
       {data?.catalogError === true && <div className={css.error}>{t('catalogUnavailable')}</div>}
@@ -284,35 +244,102 @@ export function SkillSwitchBody(props: { store: PanelStore; scope: PanelScope })
       )}
 
       <div className={css.body}>
-        {loading && data === null && <p className={css.status}>{t('loading')}</p>}
-        {!loading && data === null && <p className={css.status}>{t('loadFailed')}</p>}
-        {data !== null && (
+        {selected !== undefined ? (
+          <SkillDetail
+            row={selected}
+            showVerdict={data?.verdictAvailable === true}
+            onBack={() => store.actions.backToList()}
+          />
+        ) : (
           <>
-            <div className={css.summary}>{t('summary', { total, blocked: blockedCount, error: errorCount })}</div>
-            {rows.length === 0
-              ? <p className={css.status}>{emptyLabel(state.filter, query !== '', total)}</p>
-              : (
-                <div className={css.skillList}>
-                  {rows.map(row => (
-                    <SkillCard
-                      key={row.name}
-                      row={row}
-                      showVerdict={data.verdictAvailable}
-                      busy={busyName === row.name}
-                      menu={menu !== null && menu.name === row.name ? menu : null}
-                      onToggle={() => { void toggle(row) }}
-                      onOpenMenu={() => {
-                        setMenu(prev => (prev !== null && prev.name === row.name && prev.mode === 'actions' ? null : { name: row.name, mode: 'actions' }))
-                      }}
-                      onAskDelete={() => setMenu({ name: row.name, mode: 'confirm-delete' })}
-                      onAskRepair={() => setMenu({ name: row.name, mode: 'confirm-repair' })}
-                      onConfirmDelete={() => { void removeSkill(row) }}
-                      onConfirmRepair={() => { void repairSkill(row) }}
-                      onCloseMenu={() => setMenu(null)}
-                    />
-                  ))}
+            <div className={css.toolbar}>
+              <div className={css.filters}>
+                <FilterChip
+                  label={t('filterAll')}
+                  count={total}
+                  active={state.filter === 'all'}
+                  onClick={() => store.actions.setFilter('all')}
+                />
+                <FilterChip
+                  label={t('filterBlocked')}
+                  count={blockedCount}
+                  active={state.filter === 'blocked'}
+                  onClick={() => store.actions.setFilter('blocked')}
+                />
+              </div>
+              <div className={css.actions}>
+                <input
+                  className={css.searchInput}
+                  value={state.query}
+                  placeholder={t('searchPlaceholder')}
+                  aria-label={t('searchPlaceholder')}
+                  onChange={(event) => store.actions.setQuery(event.target.value)}
+                />
+                <button
+                  type="button"
+                  className={css.ghostButton}
+                  disabled={busyGlobal || data === null || switchCount === 0}
+                  title={t('resetAll')}
+                  onClick={() => setConfirmReset(true)}
+                >
+                  {t('resetAll')}
+                </button>
+              </div>
+            </div>
+
+            {confirmReset && (
+              <div className={css.notice}>
+                {data?.mode === 'allow' ? t('resetConfirmAllow') : t('resetConfirm')}
+                <div className={css.menuActions}>
+                  <button type="button" className={`${css.ghostButton} ${css.dangerButton}`} disabled={busyGlobal} onClick={() => { void resetAll() }}>
+                    {busyGlobal ? '…' : t('confirm')}
+                  </button>
+                  <button type="button" className={css.ghostButton} disabled={busyGlobal} onClick={() => setConfirmReset(false)}>
+                    {t('cancel')}
+                  </button>
                 </div>
-              )}
+              </div>
+            )}
+
+            {loading && data === null && <p className={css.status}>{t('loading')}</p>}
+            {!loading && data === null && <p className={css.status}>{t('loadFailed')}</p>}
+            {data !== null && (
+              <>
+                <div className={css.summary}>{t('summary', { total, blocked: blockedCount, error: errorCount })}</div>
+                {rows.length === 0
+                  ? <p className={css.status}>{emptyLabel(state.filter, query !== '', total)}</p>
+                  : (
+                    <div className={css.skillList}>
+                      {rows.map(row => (
+                        <SkillCard
+                          key={row.name}
+                          row={row}
+                          showVerdict={data.verdictAvailable}
+                          busy={busyName === row.name}
+                          menu={menu !== null && menu.name === row.name ? menu : null}
+                          onOpen={() => {
+                            // 进详情前先收起列表上的浮层：下拉菜单锚在卡片上，留着会浮在
+                            // 详情上方；「恢复本项全部」的二次确认同理（回列表后仍会重问，
+                            // 不会因为这一下就被当成已确认）。
+                            setMenu(null)
+                            setConfirmReset(false)
+                            store.actions.showDetail(row.name)
+                          }}
+                          onToggle={() => { void toggle(row) }}
+                          onOpenMenu={() => {
+                            setMenu(prev => (prev !== null && prev.name === row.name && prev.mode === 'actions' ? null : { name: row.name, mode: 'actions' }))
+                          }}
+                          onAskDelete={() => setMenu({ name: row.name, mode: 'confirm-delete' })}
+                          onAskRepair={() => setMenu({ name: row.name, mode: 'confirm-repair' })}
+                          onConfirmDelete={() => { void removeSkill(row) }}
+                          onConfirmRepair={() => { void repairSkill(row) }}
+                          onCloseMenu={() => setMenu(null)}
+                        />
+                      ))}
+                    </div>
+                  )}
+              </>
+            )}
           </>
         )}
       </div>
@@ -339,6 +366,21 @@ function emptyLabel(filter: string, searching: boolean, total: number): string {
   return t('emptyFiltered')
 }
 
+/**
+ * 详情当前要显示的那一行。
+ *
+ * 单独抽出来是因为这里有**两条容易写错的规则**，值得被测试盯住：
+ * 1. 查的是完整表 `data.skills`（不是筛过的 rows）——筛选/搜索只作用于列表，
+ *    详情不该因为列表筛选而变空；
+ * 2. 名字在数据里找不到时返回 undefined，调用方回落**列表**。这覆盖"进详情后
+ *    这次加载里那行没了"（换了会话、或 host 回传的新数据里已不存在），
+ *    而不是渲染一个空壳详情页。
+ */
+export function selectedRow(data: PanelData | null, view: string, name: string): SkillRow | undefined {
+  if (view !== 'detail' || data === null) return undefined
+  return data.skills.find(row => row.name === name)
+}
+
 /** 打开的卡片菜单状态（`SkillCard` 也导出给渲染测试用）。 */
 export type SkillCardMenu = CardMenu
 
@@ -349,6 +391,8 @@ export interface SkillCardProps {
   showVerdict: boolean
   busy: boolean
   menu: CardMenu
+  /** 点事实区（名字/描述）进入详情。 */
+  onOpen: () => void
   onToggle: () => void
   onOpenMenu: () => void
   onAskDelete: () => void
@@ -380,7 +424,12 @@ export function SkillCard(props: SkillCardProps) {
       className={`${css.skillCard} ${row.blocked ? css.skillCardBlocked : ''} ${menu !== null ? css.skillCardActive : ''}`}
       data-skill-card
     >
-      <div className={css.skillMain}>
+      <button
+        type="button"
+        className={`${css.skillMain} ${css.skillOpen}`}
+        aria-label={`${row.name} · ${t('openDetail')}`}
+        onClick={props.onOpen}
+      >
         <span className={css.skillNameRow}>
           <span className={css.skillName} title={row.name}>{row.name}</span>
           <span className={`${css.badge} ${css.badgeSource}`}>{sourceLabel(row.source)}</span>
@@ -407,7 +456,7 @@ export function SkillCard(props: SkillCardProps) {
             {!row.blockable && <span className={css.metaWarn}>{t('notBlockable')}</span>}
           </span>
         )}
-      </div>
+      </button>
 
       <div className={css.controls}>
         <button
@@ -490,6 +539,135 @@ export function SkillCard(props: SkillCardProps) {
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+/** `SkillDetail` 的 props（导出以便单独做渲染测试）。 */
+export interface SkillDetailProps {
+  row: SkillRow
+  /** 同卡片：false = 不显示有效/错误判定（拿不到该会话的观察者作用域）。 */
+  showVerdict: boolean
+  onBack: () => void
+}
+
+/**
+ * 一个 skill 的详情：名称、描述、判定依据（A/B/C），以及**这个名字在磁盘上
+ * 存在的每一处根位置**。
+ *
+ * 为什么需要它：列表每行只显示"胜出副本"（rank 最小者），同名 skill 散在
+ * 共享根 / DSH 根 / 库根里时，用户看不到另外几处，也就判断不了"删干净了没有"
+ * 或"DSH 到底加载的是哪一份"。这里把每处副本的根目录、具体文件、优先级、
+ * 是否会被 DSH 加载、能否删除、以及**它自己**的 frontmatter 问题一并摊开。
+ *
+ * 只读：不带任何写动作（屏蔽 / 删除 / 补齐仍在列表里），所以详情不会改变状态，
+ * 也就不存在"详情里的数据过期"问题——它渲染的就是本次加载回来的那份。
+ */
+export function SkillDetail(props: SkillDetailProps) {
+  const { row, showVerdict, onBack } = props
+  const hasIssues = row.issues.length > 0
+  const libraryOnly = row.copies.length > 0 && row.copies.every(copy => !copy.live)
+  const errors = showVerdict ? (row.errors ?? []) : []
+  const valid = errors.length === 0
+
+  return (
+    <div className={css.skillDetail}>
+      <div className={css.detailHeader}>
+        <button type="button" className={css.ghostButton} onClick={onBack}>{t('backToList')}</button>
+        <h3 className={css.detailTitle}>{row.name}</h3>
+        <span className={`${css.badge} ${css.badgeSource}`}>{sourceLabel(row.source)}</span>
+        {showVerdict && (
+          <span className={`${css.badge} ${valid ? css.badgeValid : css.badgeError}`}>
+            {valid ? t('badgeValid') : t('badgeError')}
+          </span>
+        )}
+        {row.blocked && <span className={`${css.badge} ${css.badgeBlocked}`}>{t('badgeBlocked')}</span>}
+        {libraryOnly && <span className={css.badge}>{t('badgeUnassigned')}</span>}
+        {row.source === 'bundled' && <span className={css.badge}>{t('badgeBundled')}</span>}
+        {row.form === 'virtual' && <span className={css.badge}>{t('badgeVirtual')}</span>}
+      </div>
+
+      {/* 判定失败项放最上面：它是这一页里唯一"需要用户行动"的信息。 */}
+      {errors.length > 0 && <div className={css.metaWarn}>{errors.map(verdictLabel).join(' · ')}</div>}
+
+      <div className={css.detailSection}>{t('detailDescription')}</div>
+      <p className={css.detailDesc}>{row.description !== '' ? row.description : '—'}</p>
+      {hasIssues && <div className={css.metaWarn}>{row.issues.map(issueLabel).join(' · ')}</div>}
+      {(row.nameSource === 'entry' || row.descriptionSource === 'body' || !row.blockable) && (
+        <div className={css.copyTag}>
+          {row.nameSource === 'entry' && <span>{t('nameFromEntry')}</span>}
+          {row.descriptionSource === 'body' && <span>{t('descFromBody')}</span>}
+          {!row.blockable && <span className={css.metaWarn}>{t('notBlockable')}</span>}
+        </div>
+      )}
+
+      {/* 判定依据：把 A/B/C 三条原始事实直接列出来，而不是只给一个结论徽标。
+          **必须跟 showVerdict 一起关**：拿不到观察者作用域时 catalog 根本没读，
+          `inCatalog` 恒为 false，照直渲染就等于把"我没读到"说成"它不在注册表里"
+          ——正是上一版据以误报 34 行的那个错误。 */}
+      {showVerdict && (
+        <>
+          <div className={css.detailSection}>{t('detailVerdict')}</div>
+          <div className={css.detailFacts}>
+            <span className={css.detailFact}>
+              <span>{t('detailInRegistry')}</span>
+              <span className={css.detailFactValue}>{row.inCatalog ? t('yes') : t('no')}</span>
+            </span>
+            {row.invocation !== undefined && (
+              <>
+                <span className={css.detailFact}>
+                  <span>{t('detailModelInvocable')}</span>
+                  <span className={css.detailFactValue}>{row.invocation.modelInvocable ? t('yes') : t('no')}</span>
+                </span>
+                <span className={css.detailFact}>
+                  <span>{t('detailUserInvocable')}</span>
+                  <span className={css.detailFactValue}>{row.invocation.userInvocable ? t('yes') : t('no')}</span>
+                </span>
+              </>
+            )}
+          </div>
+        </>
+      )}
+
+      <div className={css.detailSection}>
+        {row.copies.length > 0
+          ? `${t('detailRoots')} · ${t('copiesOf', { count: row.copies.length })}`
+          : t('detailRoots')}
+      </div>
+      {row.copies.length === 0
+        ? (
+          <p className={css.copyTag}>
+            {t('detailNoCopies')}{row.provider !== undefined ? ` (${row.provider})` : ''}
+          </p>
+        )
+        : (
+          <ul className={css.copyList}>
+            {row.copies.map(copy => (
+              <li key={`${copy.source}:${copy.path}`} className={css.copyItem}>
+                <div className={css.copyHead}>
+                  <span className={`${css.badge} ${css.badgeSource}`}>{sourceLabel(copy.source)}</span>
+                  {/* 列表里的名字/描述/徽标都取自"胜出副本"（rank 最小），这里标出是哪一处。 */}
+                  {copy.path === row.path && copy.source === row.source && (
+                    <span className={`${css.badge} ${css.badgeValid}`}>{t('detailCopyCurrent')}</span>
+                  )}
+                  <span className={css.badge}>{copy.form === 'bundle' ? t('detailFormBundle') : t('detailFormFlat')}</span>
+                  <span className={css.copyTag}>{copy.live ? t('detailCopyLive') : t('detailCopyNotLive')}</span>
+                  <span className={css.copyTag}>{t('detailCopyRank', { rank: copy.rank })}</span>
+                  {!copy.deletable && <span className={css.metaWarn}>{t('detailCopyProtected')}</span>}
+                </div>
+                <div className={css.copyPath}>{t('detailRootLabel')}: {copy.rootPath}</div>
+                <div className={css.copyPathDim}>{t('detailFileLabel')}: {copy.path}</div>
+                {copy.entryName !== row.name && (
+                  <div className={css.copyTag}>{t('detailEntryName', { name: copy.entryName })}</div>
+                )}
+                {/* 每处副本各自的问题：同一个名字在不同根里可能是不同的状态。 */}
+                {copy.issues.length > 0 && (
+                  <div className={css.metaWarn}>{copy.issues.map(issueLabel).join(' · ')}</div>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
     </div>
   )
 }
