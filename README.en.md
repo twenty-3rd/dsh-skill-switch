@@ -83,10 +83,17 @@ has `dsh.bundle.patch` into `dsh.profile.bundles`.
 ```sh
 # 1) from GitHub (public repository; lib/ is committed, so no build after installing)
 dsh plugin --profile desktop add -w github:twenty-3rd/dsh-skill-switch
+dsh plugin --profile web add -w github:twenty-3rd/dsh-skill-switch
 
 # 2) from a local checkout (development / personal use)
 dsh plugin --profile desktop add -w /absolute/path/to/dsh-skill-switch
+dsh plugin --profile web add -w /absolute/path/to/dsh-skill-switch
 ```
+
+Replace `--profile` with your target profile: DSH Desktop uses `desktop`, command-line launches use
+`web`. The plugin supports both (`dsh.marketplace.profiles` in `package.json` declares
+`["desktop", "web"]`, matching the examples above — the plugin marketplace uses that declaration to
+decide whether one-click install is allowed).
 
 **This package supports only these two sources** (GitHub repository / local path) and offers no npm
 install. Afterwards you **must restart DSH** (a new bundle changes the host-side composition;

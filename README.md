@@ -78,10 +78,16 @@ DSH 的 skill 是全局发现 + 会话注入的：装了的 skill 对所有会�
 ```sh
 # 1) 从 GitHub（公开仓库；lib/ 已随仓库提交，装完不用构建）
 dsh plugin --profile desktop add -w github:twenty-3rd/dsh-skill-switch
+dsh plugin --profile web add -w github:twenty-3rd/dsh-skill-switch
 
 # 2) 从本地 checkout（开发/自用）
 dsh plugin --profile desktop add -w /absolute/path/to/dsh-skill-switch
+dsh plugin --profile web add -w /absolute/path/to/dsh-skill-switch
 ```
+
+`--profile` 换成你的目标 profile：DSH Desktop 用的是 `desktop`，命令行启动用 `web`。
+本插件两种都支持（`package.json` 的 `dsh.marketplace.profiles` 声明为
+`["desktop", "web"]`，与本节示例一致——插件市场会据此判定能否一键安装）。
 
 **本包只支持这两种来源**（GitHub 仓库 / 本地路径），不提供 npm 安装。
 装完**必须重启 DSH**（新增 bundle 改变 host 侧组合，只刷新页面不够），
