@@ -42,6 +42,7 @@
     "lib/types/**/*.d.ts",
     "cordis.patch.yml",
     "README.md",
+    "README.en.md",
     "CHANGELOG.md",
     "LICENSE"
   ],
@@ -68,8 +69,7 @@
     "watch": "tsdown --watch",
     "test": "pnpm build && vitest run",
     "test:unit": "vitest run",
-    "verify:installed": "node scripts/verify-installed.mjs",
-    "prepublishOnly": "pnpm build"
+    "verify:installed": "node scripts/verify-installed.mjs"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",

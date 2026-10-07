@@ -1,12 +1,16 @@
 # dsh-skill-switch
 
-[![GitHub stars](https://img.shields.io/github/stars/twenty-3rd/dsh-skill-switch?style=social&label=Star)](https://github.com/twenty-3rd/dsh-skill-switch)
+[English](README.en.md) | 简体中文
 
-> ⭐ **如果它帮到了你，请点上面的 Star 收藏一下** →
-> <https://github.com/twenty-3rd/dsh-skill-switch>
+[![GitHub stars](https://img.shields.io/github/stars/twenty-3rd/dsh-skill-switch?style=social&label=Star)](https://github.com/twenty-3rd/dsh-skill-switch)
+[![⭐ 点这里 Star 收藏](https://img.shields.io/badge/%E2%AD%90_%E7%82%B9%E8%BF%99%E9%87%8C_Star-%E6%94%B6%E8%97%8F%E6%8F%92%E4%BB%B6-FFD33D?style=for-the-badge&labelColor=black)](https://github.com/twenty-3rd/dsh-skill-switch)
+
+> ⭐ **花 5 秒点一下 Star → <https://github.com/twenty-3rd/dsh-skill-switch>**
+> （打开后点页面右上角 `☆ Star` → `★ Starred`）
 >
-> 收藏之后，下次要装、要排查的时候一眼就能找回来；Star 数也是"这个插件还有人用"
-> 的可见信号——它比 issue 更能决定一个开源插件还值不值得继续维护。
+> 这个插件干的事很小：让你在会话里 **5 秒关掉一个用不到的 skill**，把散在四五个根里的
+> 副本**一次删干净**，并且告诉你某条 skill 到底是"有效"还是"为什么没生效"。
+> 它替你省下的时间，值得还它一次点击。
 
 DSH（DeepSeek Harness）的**项目级 skill 开关 + 全局删除**插件。在会话里多出一个
 「Skill 开关」标签页，用一张表把当前项目的 skill 列清楚，然后：
@@ -66,7 +70,7 @@ DSH 的 skill 是全局发现 + 会话注入的：装了的 skill 对所有会�
 |---|---|---|
 | DSH Desktop | `0.2.0-rc.2` 实测 | 面板用到 `ctx.agents` / `snapshot({ scope })` / `conversation.view` 座位 / `WebServer`，在这个版本上端到端验证过 |
 | Node | ≥ 20 | `engines.node` |
-| pnpm | **与 profile 一致的大版本**（本机 App 声明 `11.7.0`） | `dsh plugin` 把参数转发给 **PATH 上的 pnpm**；大版本不一致会撞 `ERR_PNPM_UNEXPECTED_STORE`（见下面坑 2） |
+| pnpm | **与 profile 一致的大版本**（本机 App 声明 `11.7.0`） | `dsh plugin` 把参数转发给 **PATH 上的 pnpm**；大版本不一致会撞 `ERR_PNPM_UNEXPECTED_STORE` |
 | 平台 | macOS arm64 实测；代码无平台特定 | 路径只用 `node:path`，目录监视由官方 provider 负责 |
 
 ### 安装命令
@@ -77,49 +81,11 @@ dsh plugin --profile desktop add -w github:twenty-3rd/dsh-skill-switch
 
 # 2) 从本地 checkout（开发/自用）
 dsh plugin --profile desktop add -w /absolute/path/to/dsh-skill-switch
-
-# 3) 发布到 npm 之后
-dsh plugin --profile desktop add -w dsh-skill-switch
 ```
 
-`-w` 的意义见坑 1。装完**必须重启 DSH**（新增 bundle 改变 host 侧组合，只刷新页面不够），
+**本包只支持这两种来源**（GitHub 仓库 / 本地路径），不提供 npm 安装。
+装完**必须重启 DSH**（新增 bundle 改变 host 侧组合，只刷新页面不够），
 重启后视图标签条里会出现「Skill 开关」。
-
-### 本机实测会踩的两个坑
-
-1. **`ERR_PNPM_ADDING_TO_ROOT`** —— profile 本身是一个 pnpm workspace 根
-   （`pnpm-workspace.yaml` 里 `packages: ['.']`），因此 `add` / `remove` /
-   `update` / `install` 必须带 `-w`。
-2. **`ERR_PNPM_UNEXPECTED_STORE`** —— `dsh plugin` 用的是 **PATH 上的 pnpm**，
-   而 profile 是用安装自带的 pnpm 装的。本机 App 是 0.2.0-rc.2，其
-   `desktop-runtime.json` 声明 `pnpmVersion: 11.7.0`（store `v11`、
-   `nodeLinker: hoisted`），但 PATH 上的 `/usr/local/bin/pnpm` 是 **9.6.0**
-   （store `v3`），于是报
-   `dependencies are currently linked from /…/store/v11, pnpm now wants to use /…/store/v3`。
-   解决：让 `dsh plugin` 看到 11.7.0 的 pnpm。
-
-两个坑可以一次绕开——用随本机装好的小包装脚本 `~/.dsh/plugin-src/dsh-plugin`：
-
-```sh
-~/.dsh/plugin-src/dsh-plugin add /absolute/path/to/dsh-skill-switch
-~/.dsh/plugin-src/dsh-plugin ls
-~/.dsh/plugin-src/dsh-plugin remove dsh-skill-switch
-```
-
-它从 profile 自己的 `node_modules/.modules.yaml` 读出 pnpm 版本（本机 11.7.0），
-用 corepack 拉起同一版本，并对写操作自动补 `-w`。想手动复现等价于：
-
-```sh
-cd ~/.dsh/profiles/desktop
-corepack pnpm@11.7.0 add -w /absolute/path/to/dsh-skill-switch
-# 然后把 "dsh-skill-switch" 追加进 package.json 的 dsh.profile.bundles
-```
-
-> **`desktop` profile 不能由 CLI 启动/转储**：0.2 的 CLI 对
-> `--profile desktop` 的 boot / `--dump-config` 会直接拒绝
-> （`profile "desktop" is managed exclusively by the Electron application`），
-> 基础 bundle 由 App 运行时提供。所以组合与启动校验只能在 App 里做；CLI 侧
-> 只有 `plugin` 子命令被允许。
 
 ### 怎么确认装对了
 
@@ -132,7 +98,7 @@ cat ~/.dsh/profiles/desktop/package.json
 ```
 
 ```sh
-# 运行面（源码 checkout 才有；npm 包的 files 里不带 scripts/）
+# 运行面（仅源码 checkout 有；scripts/ 不进发布包）
 cd /path/to/dsh-skill-switch
 pnpm install && pnpm verify:installed      # 25 项：产物能挂载、屏蔽/删除/补齐走真实 HTTP、
                                            # 客户端产物符合 __ModuleLoader__ 契约、dispose 真摘包装
@@ -162,14 +128,7 @@ dsh plugin --profile desktop remove -w dsh-skill-switch
 会话视图标签条里多出第三个标签（对话 / 轨迹 / **Skill 开关**；若装了
 dsh-skills-manager，它排在 Skills 管理器之后）。面板由三部分组成：
 
-```
-┌ 全部 12   已屏蔽 2 ┐                   [ 搜索… ]  [ 恢复本项全部 ]
-──────────────────────────────────────────────────────────────
- 项目 .dsh  有效   [取消屏蔽 ▣] [操作]  review
-            代码审查流程
- 项目 .dsh  错误   [屏蔽    ▢] [操作]  my-broken-skill
-            不在 skill 注册表里（DSH 不会加载它） · frontmatter 缺少 description
-```
+![「Skill 开关」面板：左侧筛选 chip 与搜索框，每行是来源/有效-错误徽标、描述与行内开关 +「操作」菜单](<src/操作界面.png>)
 
 - **左侧筛选 chip**：全部 / 已屏蔽（各自带计数），外加名字+描述搜索。
 - **卡片左侧**：名字、来源徽标、**有效/错误徽标**、描述，以及一行事实
@@ -184,22 +143,7 @@ dsh-skills-manager，它排在 Skills 管理器之后）。面板由三部分组
 点卡片左侧的事实区（名字 / 描述）进入详情页，「返回列表」回到列表（筛选与搜索词保留）。
 开关键与「操作」按钮不在事实区里，点它们不会跳走（名字不合法、不能写开关的行也照样能看详情）。
 
-```
-┌ [返回列表]  demo  项目 .dsh  有效 ┐
-描述
-  代码审查流程
-判定依据
-  在 skill 注册表里（条件 A）    是
-  模型可主动调用（条件 B）      是
-  用户可显式调用（条件 C）      是
-存在的根位置 · 2 处副本
-  项目 .dsh  当前生效  目录 bundle  会被 DSH 加载  优先级 100
-    根: /proj/.dsh/skills
-    文件: /proj/.dsh/skills/demo/SKILL.md
-  用户  目录 bundle  会被 DSH 加载  优先级 400
-    根: /home/me/.dsh/skills
-    文件: /home/me/.dsh/skills/demo/SKILL.md
-```
+![详情视图：描述、判定依据（条件 A/B/C 逐条 是/否）、存在的根位置（每处副本的根 / 文件 / 形态 / rank / 是否加载）](<src/skill 详情.png>)
 
 详情只做"把列表里被折叠掉的事实摊开"：列表每行只显示**胜出副本**（rank 最小者），
 同名 skill 散在共享根 / DSH 根 / 库根里时，详情是唯一能看到另外几处的地方——包括
@@ -382,28 +326,6 @@ client 半体 (lib/client.js)
 - 面板请求走**未包装**的注册表，所以被屏蔽的 skill 仍然带着
   `inCatalog: true` 显示——"已屏蔽"和"根本不存在"不会被混为一谈。
 
-## 与 dsh-skills-manager 的分工
-
-刻意不重叠。dsh-skills-manager 管 **skill 生命周期**（Skill 库 + 用户级/项目级
-**分配副本** + 新建 / 编辑 / 重命名 / 同步 / 回收）；本插件管 **生效范围控制与
-一次性清除**，没有创建、没有编辑器、没有分配、没有重命名、没有同步、没有
-「打开文件夹」。
-
-## 测试
-
-```sh
-pnpm test              # 先 pnpm build 再 vitest：172 项（纯逻辑 + 真实 cordis 组合 + 客户端接线/渲染 + 产物加载）
-pnpm test:unit         # 只跑测试（用现有 lib/，改过 src 请先 build）
-pnpm verify:installed  # 装进 profile 之后：拿 App 同版本运行时验那份已安装产物（25 项，含按作用域判定与详情视图产物）
-pnpm typecheck   # tsc --noEmit
-pnpm build       # lib/index.js + lib/client.js + lib/types
-```
-
-真实组合那一组（`tests/host-api.spec.ts`）会启动真正的 `SkillRegistry` +
-真正的 `dsh-skill-filesystem` provider + 真正的 `WebServer`，用真实 HTTP 验证：
-屏蔽后**官方注册表**的目录里确实少了一项、`get()` 确实返回 undefined；缺
-frontmatter 的 skill 确实在注册表里没有而在面板里有；删除后磁盘与两个视图都干净。
-
 ## 已知边界
 
 - 过滤按 skill **名字**匹配，不区分来源（用户级、项目级、插件自带、runtime 注册的
@@ -439,11 +361,24 @@ frontmatter 的 skill 确实在注册表里没有而在面板里有；删除后�
 
 ## 支持这个项目
 
-- ⭐ **点 Star 收藏** ← 最省事也最有用的一步：<https://github.com/twenty-3rd/dsh-skill-switch>
-  （页面右上角 `☆ Star` → `★ Starred`）。它让更多在做 DSH skill 管理的人搜到这个插件，
-  也让我知道有人真的在用。
+**最小的一步、最大的作用 —— ⭐ [点这里 Star，5 秒](https://github.com/twenty-3rd/dsh-skill-switch)**
+（页面右上角 `☆ Star` → `★ Starred`）。它同时做了三件事：
+
+- ⭐ **对你自己**：下次重装 DSH、换机器、排查"skill 怎么又冒出来了"，它就在你 Star 过的
+  列表里，**一眼找得回来**，不用再搜、不用再翻聊天记录。
+- ⭐ **对这个插件**：Star 是"还有人在用"最便宜的信号。有 Star，我愿意继续跟 DSH 版本、
+  继续修 bug、继续放宽边界；**一颗都没有，它就自然烂在角落里**——这是开源项目最真实的
+  维护动力来源。
+- ⭐ **对下一个人**：DSH 的 skill 管理几乎没有现成方案，多一颗 Star 就多一分被人搜到、
+  少踩一个坑的机会。
+
+其余同样欢迎：
+
 - 🐛 **报问题 / 提需求**：<https://github.com/twenty-3rd/dsh-skill-switch/issues>
-  —— 安装踩的坑、判定口径的疑问、边界想放宽的地方，都欢迎开 issue。
+  —— 安装踩的坑、判定口径的疑问、边界想放宽的地方，都欢迎开 issue；只来一句"我在用"
+  也很有价值。
+- 📣 **顺手转给一个也在用 DSH 的人**：DSH 生态还小，一次转发的实际效果比在任何地方
+  分发都大。
 - 发现 README 说法与代码不一致（判定口径、已知边界），直接指出即可；本项目的原则是
   "宁可不说，也不说错"，这类反馈优先级最高。
 
