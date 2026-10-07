@@ -6,10 +6,10 @@
  * 这件事本身要真的发生（目录/文件都不再存在）。
  */
 import { describe, expect, it } from 'vitest'
-import { access, mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import { access, mkdtemp, mkdir, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
-import { assertWithinRoot, deleteSkillCopies, type DeleteTarget } from '../src/skill-delete.ts'
+import { assertRealPathWithinRoot, assertWithinRoot, deleteSkillCopies, type DeleteTarget } from '../src/skill-delete.ts'
 import { SwitchError } from '../src/wire.ts'
 
 /** 造一个临时根。 */
@@ -185,5 +185,45 @@ describe('符号链接（把安全结论固定下来）', () => {
     expect(await exists(join(outside, 'keep'))).toBe(true)
     await rm(root, { recursive: true, force: true })
     await rm(outside, { recursive: true, force: true })
+  })
+})
+
+describe('assertRealPathWithinRoot（写路径的软链校验）', () => {
+  it('根内普通文件与子目录：放行', async () => {
+    const root = await makeRoot('ss-real-')
+    await mkdir(join(root, 'a', 'b'), { recursive: true })
+    await writeFile(join(root, 'flat.md'), 'x')
+    await writeFile(join(root, 'a', 'b', 'SKILL.md'), 'x')
+
+    await expect(assertRealPathWithinRoot(root, join(root, 'flat.md'))).resolves.toBe(await realpath(root))
+    await expect(assertRealPathWithinRoot(root, join(root, 'a', 'b', 'SKILL.md')))
+      .resolves.toBe(await realpath(join(root, 'a', 'b')))
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it('根内指向根外的目录软链：拒绝（forbidden），且根外文件一字未改', async () => {
+    const root = await makeRoot('ss-real-')
+    const outside = await makeRoot('ss-real-out-')
+    await mkdir(join(outside, 'precious'), { recursive: true })
+    const precious = join(outside, 'precious', 'SKILL.md')
+    await writeFile(precious, 'ORIGINAL')
+    await symlink(join(outside, 'precious'), join(root, 'linked'), 'dir')
+
+    await expect(assertRealPathWithinRoot(root, join(root, 'linked', 'SKILL.md')))
+      .rejects.toMatchObject({ code: 'forbidden', status: 403 })
+    expect(await readFile(precious, 'utf8')).toBe('ORIGINAL')
+    await rm(root, { recursive: true, force: true })
+    await rm(outside, { recursive: true, force: true })
+  })
+
+  it('根内指向根内另一处的目录软链：放行（只是转发，没有出根）', async () => {
+    const root = await makeRoot('ss-real-')
+    await mkdir(join(root, 'real'), { recursive: true })
+    await writeFile(join(root, 'real', 'SKILL.md'), 'x')
+    await symlink(join(root, 'real'), join(root, 'alias'), 'dir')
+
+    await expect(assertRealPathWithinRoot(root, join(root, 'alias', 'SKILL.md')))
+      .resolves.toBe(await realpath(join(root, 'real')))
+    await rm(root, { recursive: true, force: true })
   })
 })

@@ -72,7 +72,7 @@ import {
   type SkillRootSpec,
 } from './skill-scan.ts'
 import { listSkills, type SkillView } from './skill-view.ts'
-import { deleteSkillCopies, type DeleteTarget, type DeleteOutcome } from './skill-delete.ts'
+import { assertRealPathWithinRoot, deleteSkillCopies, type DeleteTarget, type DeleteOutcome } from './skill-delete.ts'
 
 /** Cordis 插件名（loader entry id 与日志前缀）。 */
 export const name = 'dsh-skill-switch'
@@ -638,6 +638,10 @@ export function api(scope: ApiScope): Record<string, ApiMethod> {
           continue
         }
         try {
+          // 扫描用 stat（跟随符号链接），所以"字面上在根内"不等于"真实路径在根内"：
+          // 根里一个指向别处的目录软链会让写入穿透到根外（甚至穿透进受保护根）。
+          // 写之前必须按 realpath 再校验一次父目录。
+          await assertRealPathWithinRoot(copy.rootPath, copy.path)
           const raw = await readSkillRaw(copy.path)
           const next = repairFrontmatter(raw, { name: target, description })
           await writeFileAtomic(copy.path, next, { mode: 0o644 })

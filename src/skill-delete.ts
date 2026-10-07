@@ -10,8 +10,8 @@
  * 删除是幂等的：某一处副本已经不在时记为 skipped('missing')，不算失败，
  * 只要至少删掉一处就算成功。
  */
-import { rm, stat } from 'node:fs/promises'
-import { resolve as resolvePath, sep } from 'node:path'
+import { realpath, rm, stat } from 'node:fs/promises'
+import { dirname, resolve as resolvePath, sep } from 'node:path'
 import type { SkillForm, SkillRootSource } from './skill-scan.ts'
 import { SwitchError } from './wire.ts'
 
@@ -57,6 +57,31 @@ export function assertWithinRoot(root: string, candidate: string): string {
     throw new SwitchError('forbidden', `path "${candidate}" escapes root "${root}"`, 403)
   }
   return candidateResolved
+}
+
+/**
+ * 断言 `candidate` 的**真实路径**（解析符号链接之后）仍位于 `root` 的真实路径之内。
+ *
+ * `assertWithinRoot` 只做字符串前缀比较：`<root>/linked/SKILL.md` 在字面上位于根内，
+ * 但 `linked` 若是指向根外目录的符号链接，**写入**就会穿透到根外（删除不受影响，
+ * `fs.rm` 只摘链接本身）。扫描层用 `stat`（会跟随链接）发现条目，所以写路径
+ * （补齐 frontmatter）必须再做一次 realpath 校验。
+ *
+ * 只校验父目录的真实路径：文件本身是符号链接时，`writeFileAtomic` 的
+ * 「同目录临时文件 + rename」替换的是链接本身，不会写进链接目标。
+ *
+ * @param root - 所属根（绝对路径，必须已存在）。
+ * @param candidate - 待写入的文件路径。
+ * @returns 父目录的真实路径。
+ * @throws SwitchError('forbidden') 当父目录的真实路径逃出根。
+ */
+export async function assertRealPathWithinRoot(root: string, candidate: string): Promise<string> {
+  const realRoot = await realpath(resolvePath(root))
+  const realDir = await realpath(dirname(resolvePath(candidate)))
+  if (realDir !== realRoot && !realDir.startsWith(realRoot + sep)) {
+    throw new SwitchError('forbidden', `path "${candidate}" resolves outside root "${root}" (symlinked directory?)`, 403)
+  }
+  return realDir
 }
 
 /** 删除一处副本（已通过根校验）。 */

@@ -17,7 +17,7 @@
  *   这正是"目录变了"的语义，生产环境由 watcher 负责。
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
@@ -275,6 +275,28 @@ describe('真实组合：官方注册表 + WebServer + /skill-switch API', () =>
     const result = await raw(port, 'POST', '/skill-switch/api/skills.repair', { sessionId: 'session-1', name: 'already-ok' })
     expect(result.status).toBe(400)
     expect(result.body?.error?.code).toBe('bad-request')
+  })
+
+  it('补齐 frontmatter 不穿透根内指向根外的目录软链（写路径的 realpath 校验）', async () => {
+    const project = await useProject('repair-symlink')
+    // 根外的"珍贵"目录：一个缺 frontmatter、看起来完全可修复的 skill。
+    const outside = join(scratch, 'outside-precious')
+    await mkdir(outside, { recursive: true })
+    const outsidePath = join(outside, 'SKILL.md')
+    const original = '# 只有正文\n\n描述行\n'
+    await writeFile(outsidePath, original)
+    // 项目 skill 根里放一个指向它的目录软链，冒充一个可修复的条目。
+    const root = join(project, '.dsh', 'skills')
+    await mkdir(root, { recursive: true })
+    await symlink(outside, join(root, 'sneaky'), 'dir')
+
+    const result = await raw(port, 'POST', '/skill-switch/api/skills.repair', { sessionId: 'session-1', name: 'sneaky' })
+
+    // 唯一副本的写入被拒 -> 整体 fs-error；根外文件一字未改，软链本身也没被摘掉。
+    expect(result.status).toBe(400)
+    expect(result.body?.error?.code).toBe('fs-error')
+    expect(await readFile(outsidePath, 'utf8')).toBe(original)
+    expect(await readFile(join(root, 'sneaky', 'SKILL.md'), 'utf8')).toBe(original)
   })
 
   it('全局删除：所有落盘副本被清掉，面板与注册表都不再可见', async () => {
