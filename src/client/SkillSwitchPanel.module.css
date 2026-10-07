@@ -473,6 +473,12 @@
   gap: 8px;
 }
 
+/* 返回按钮推到这一行右端。用 auto 外边距而不是 order/绝对定位：标题与徽标仍然
+   正常换行，按钮只在"这一行还剩空间"时贴右，窄屏时才落到下一行。 */
+.detailBack {
+  margin-left: auto;
+}
+
 .detailTitle {
   margin: 0;
   font-size: 15px;

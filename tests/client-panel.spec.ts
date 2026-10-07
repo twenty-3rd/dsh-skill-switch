@@ -403,6 +403,17 @@ describe('SkillDetail：详情页', () => {
     expect(countOf(markup, '当前生效')).toBe(1)
   })
 
+  it('「返回列表」排在标题与徽标之后（DOM 顺序 = 右端位置，Tab 顺序也是先标题后返回）', () => {
+    const markup = renderDetail()
+    const back = markup.indexOf('返回列表')
+    expect(back).toBeGreaterThan(markup.indexOf('<h3'))
+    expect(back).toBeGreaterThan(markup.indexOf('有效'))
+    expect(back).toBeGreaterThan(markup.indexOf('项目 .dsh'))
+    // 贴右端本身由 `.detailBack { margin-left: auto }` 负责——服务端渲染看不到样式，
+    // 所以这里只能钉住 DOM 顺序（布局的其余部分靠人工在页面上确认）。
+    expect(back).toBeGreaterThan(markup.indexOf('</h3>'))
+  })
+
   it('非 runtime 副本与受保护副本各自标注', () => {
     const markup = renderDetail({
       copies: [

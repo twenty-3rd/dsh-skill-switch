@@ -573,7 +573,6 @@ export function SkillDetail(props: SkillDetailProps) {
   return (
     <div className={css.skillDetail}>
       <div className={css.detailHeader}>
-        <button type="button" className={css.ghostButton} onClick={onBack}>{t('backToList')}</button>
         <h3 className={css.detailTitle}>{row.name}</h3>
         <span className={`${css.badge} ${css.badgeSource}`}>{sourceLabel(row.source)}</span>
         {showVerdict && (
@@ -585,6 +584,11 @@ export function SkillDetail(props: SkillDetailProps) {
         {libraryOnly && <span className={css.badge}>{t('badgeUnassigned')}</span>}
         {row.source === 'bundled' && <span className={css.badge}>{t('badgeBundled')}</span>}
         {row.form === 'virtual' && <span className={css.badge}>{t('badgeVirtual')}</span>}
+        {/* 返回按钮放**最后**（DOM 顺序 = 视觉顺序）：`.detailBack` 用 margin-left:auto
+            把它推到这一行右端，同时键盘 Tab 与读屏的顺序仍是"先读标题，再到返回"。 */}
+        <button type="button" className={`${css.ghostButton} ${css.detailBack}`} onClick={onBack}>
+          {t('backToList')}
+        </button>
       </div>
 
       {/* 判定失败项放最上面：它是这一页里唯一"需要用户行动"的信息。 */}

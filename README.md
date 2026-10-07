@@ -307,7 +307,7 @@ client 半体 (lib/client.js)
 ## 测试
 
 ```sh
-pnpm test              # 先 pnpm build 再 vitest：171 项（纯逻辑 + 真实 cordis 组合 + 客户端接线/渲染 + 产物加载）
+pnpm test              # 先 pnpm build 再 vitest：172 项（纯逻辑 + 真实 cordis 组合 + 客户端接线/渲染 + 产物加载）
 pnpm test:unit         # 只跑测试（用现有 lib/，改过 src 请先 build）
 pnpm verify:installed  # 装进 profile 之后：拿 App 同版本运行时验那份已安装产物（25 项，含按作用域判定与详情视图产物）
 pnpm typecheck   # tsc --noEmit
