@@ -1,6 +1,6 @@
 # dsh-skill-switch
 
-[English](README.en.md) | 简体中文
+[English](README.en.md) | 简体中文（本行切的是 **README** 的语言；面板界面的语言见下文「界面」）
 
 [![GitHub stars](https://img.shields.io/github/stars/twenty-3rd/dsh-skill-switch?style=social&label=Star)](https://github.com/twenty-3rd/dsh-skill-switch)
 [![⭐ 点这里 Star 收藏](https://img.shields.io/badge/%E2%AD%90_%E7%82%B9%E8%BF%99%E9%87%8C_Star-%E6%94%B6%E8%97%8F%E6%8F%92%E4%BB%B6-FFD33D?style=for-the-badge&labelColor=black)](https://github.com/twenty-3rd/dsh-skill-switch)
@@ -137,6 +137,10 @@ dsh-skills-manager，它排在 Skills 管理器之后）。面板由三部分组
 - **卡片右侧**：一个纯 CSS 开关键（点一下就是一次切换）+ 「操作」下拉菜单。
 - **操作菜单**：「补齐 frontmatter」（仅 frontmatter 有问题的项）与
   「删除（全部副本）」；两者都有二次确认，且会把将受影响的文件路径一条条列出来。
+
+**界面语言**：面板文案跟随 DSH 的界面语言，内置中文 / English 两套字典（键值一一对应）。
+切换入口是 **设置 → 通用 → Language**（`dsh-client-locale` 提供的那一行）；切换即时生效、
+不用刷新页面，「Skill 开关」标签文字也会一起变。面板自身没有独立的语言开关。
 
 ### 点开一行 → 详情（只读）
 
@@ -347,6 +351,8 @@ client 半体 (lib/client.js)
   造成越界删除，这一点有专门的测试固定住。
 - 「删除（全部副本）」不覆盖**其它项目**的项目级副本（见上文"范围要说清楚"）。
 - 需要 host 重启后插件才初次加载；之后的开关变化无需再重启。
+- 面板的语言偏好**不是本插件的设置项**：它由 `dsh-client-locale` 持有，只在 loopback
+  页面写入 `$DSH_HOME/cordis.patch.yml`；非 loopback 页面上的选择只保留在当前进程内。
 
 ## 版本历史
 

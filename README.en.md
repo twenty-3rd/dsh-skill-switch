@@ -1,6 +1,6 @@
 # dsh-skill-switch
 
-English | [简体中文](README.md)
+English | [简体中文](README.md) *(this line switches the **README**'s language; for the panel UI language see [Interface](#interface))*
 
 [![GitHub stars](https://img.shields.io/github/stars/twenty-3rd/dsh-skill-switch?style=social&label=Star)](https://github.com/twenty-3rd/dsh-skill-switch)
 [![⭐ 点这里 Star 收藏](https://img.shields.io/badge/%E2%AD%90_%E7%82%B9%E8%BF%99%E9%87%8C_Star-%E6%94%B6%E8%97%8F%E6%8F%92%E4%BB%B6-FFD33D?style=for-the-badge&labelColor=black)](https://github.com/twenty-3rd/dsh-skill-switch)
@@ -145,6 +145,11 @@ dsh-skills-manager is installed, it comes after the Skills manager). The panel h
 - **Actions menu**: "Repair frontmatter" (only for entries with frontmatter problems) and
   "Delete (all copies)"; both require a second confirmation and list the file paths that will be
   affected, one by one.
+
+**UI language**: panel copy follows the DSH UI language; both the Chinese and the English dictionary
+ship with the plugin (key-for-key identical). Switch it in **Settings → General → Language** (the row
+provided by `dsh-client-locale`). The change applies immediately — no page reload — and the
+"Skill Switch" tab label follows. The panel has no separate language switch of its own.
 
 ### Click a row → details (read-only)
 
@@ -390,6 +395,9 @@ client half (lib/client.js)
   precise about scope" above).
 - The plugin needs a host restart before it first loads; after that, switch changes need no further
   restart.
+- The panel's language preference is **not a setting of this plugin**: `dsh-client-locale` owns it and
+  writes it to `$DSH_HOME/cordis.patch.yml` on **loopback pages**; on a non-loopback page the choice
+  stays in the current process only.
 
 ## Version history
 
