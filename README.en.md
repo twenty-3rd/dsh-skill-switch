@@ -134,7 +134,7 @@ disk immediately, and the change takes effect on the **next model round** — no
 A third tab is added to the session view tab bar (Conversation / Trace / **Skill Switch**; if
 dsh-skills-manager is installed, it comes after the Skills manager). The panel has three parts:
 
-!["Skill Switch" panel: filter chips and a search box on the left; each row has source/valid-error badges, the description, an inline switch and an "Actions" menu](<src/操作界面.png>)
+!["Skill Switch" panel: filter chips and a search box on the left; each row has source/valid-error badges, the description, an inline switch and an "Actions" menu](<assets/操作界面.png>)
 
 - **Filter chips on the left**: All / Blocked (each with a count), plus a name + description search.
 - **Left side of the card**: the name, the source badge, the **valid/error badge**, the description,
@@ -153,7 +153,7 @@ list" returns to the list (the filter and search term are kept). The switch and 
 are not inside the fact area, so clicking them does not navigate away (rows with an invalid name that
 cannot have a switch file written can still open their details).
 
-![Detail view: description, verdict basis (conditions A/B/C, each yes/no), the root locations that exist (each copy's root / file / form / rank / whether it is loaded)](<src/skill 详情.png>)
+![Detail view: description, verdict basis (conditions A/B/C, each yes/no), the root locations that exist (each copy's root / file / form / rank / whether it is loaded)](<assets/skill 详情.png>)
 
 The detail page does one thing only: "spread out the facts that are folded away in the list". Each
 list row shows only the **winning copy** (the one with the lowest rank), so when skills of the same

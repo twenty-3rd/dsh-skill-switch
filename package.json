@@ -44,7 +44,8 @@
     "README.md",
     "README.en.md",
     "CHANGELOG.md",
-    "LICENSE"
+    "LICENSE",
+    "assets/**"
   ],
   "engines": {
     "node": ">=20"
