@@ -4,6 +4,22 @@
   "description": "DSH web plugin: project-level skill switches with a panel — one-click block/unblock per project, global skill deletion, a valid/error verdict per skill (in registry + model-invocable + user-invocable, with the failing condition shown), and a read-only detail view listing every on-disk root location of a skill. 项目级 skill 开关 + 全局删除 + 有效/错误判定 + 每处根位置详情面板。",
   "type": "module",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/twenty-3rd/dsh-skill-switch.git"
+  },
+  "homepage": "https://github.com/twenty-3rd/dsh-skill-switch#readme",
+  "bugs": {
+    "url": "https://github.com/twenty-3rd/dsh-skill-switch/issues"
+  },
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "skill",
+    "agent-skills",
+    "cordis",
+    "plugin"
+  ],
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
   "exports": {
@@ -26,7 +42,8 @@
     "lib/types/**/*.d.ts",
     "cordis.patch.yml",
     "README.md",
-    "CHANGELOG.md"
+    "CHANGELOG.md",
+    "LICENSE"
   ],
   "engines": {
     "node": ">=20"

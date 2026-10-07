@@ -12,8 +12,18 @@ DSH（DeepSeek Harness）的**项目级 skill 开关 + 全局删除**插件。�
   任一条不成立就是「错误」，并把**是哪一条**（以及缺哪个 frontmatter 字段）写在行内。
   官方 provider 会整条丢弃的 skill（缺 `name`/`description`、YAML 坏掉）因此
   仍然看得见、看得懂——这是相对 dsh-skills-manager 的可见性优化。
+- **详情视图**：点开一行看这个名字在磁盘上到底有几处副本（根、文件、rank、
+  会不会被加载、能不能删、每处各自的 frontmatter 问题）。
 
-> 这是 v1（`dsh-skill-switch` 0.1.x，纯文件协议、无界面）的 v0.3。v1 的
+| | |
+|---|---|
+| **版本** | **0.4.0**（历史见 [CHANGELOG](CHANGELOG.md) 与[版本历史](#版本历史)） |
+| 许可 | MIT（[LICENSE](LICENSE)） |
+| 插件形态 | DSH 标准双半体：host `exports["."]` → `lib/index.js`（ESM）+ client `exports["./client"]` → `lib/client.js`（浏览器 CJS 闭包工厂），`dsh.bundle.patch` → `cordis.patch.yml` |
+| 实测环境 | DSH Desktop `0.2.0-rc.2` · macOS arm64 · Node ≥ 20 |
+| 测试 | `pnpm test` **172 项**；装进 profile 后 `pnpm verify:installed` **25 项** |
+
+> 这是 v1（`dsh-skill-switch` 0.1.x，纯文件协议、无界面）的 **v0.4**。v1 的
 > **开关文件协议与屏蔽语义一字不改**，升级不需要迁移任何已存在的开关目录。
 
 ## 为什么需要它
@@ -22,68 +32,50 @@ DSH 的 skill 是全局发现 + 会话注入的：装了的 skill 对所有会�
 `category`/`paths` 之类"限定范围"的元数据并不存在，所以"这个项目用不到 A 股
 分析器"只能靠外部开关表达。本插件补上这一层，并把它做成可以在页面里操作的东西。
 
-## 界面
+## 安装（DSH Desktop 标准安装支持）
 
-会话视图标签条里多出第三个标签（对话 / 轨迹 / **Skill 开关**；若装了
-dsh-skills-manager，它排在 Skills 管理器之后）。面板由三部分组成：
+本包就是**标准形态的 DSH 插件**：用官方 `dsh plugin` 装，不需要手工改 profile、
+不需要注册任何全局路径。
 
-```
-┌ 全部 12   已屏蔽 2 ┐                   [ 搜索… ]  [ 恢复本项全部 ]
-──────────────────────────────────────────────────────────────
- 项目 .dsh  有效   [取消屏蔽 ▣] [操作]  review
-            代码审查流程
- 项目 .dsh  错误   [屏蔽    ▢] [操作]  my-broken-skill
-            不在 skill 注册表里（DSH 不会加载它） · frontmatter 缺少 description
-```
+### 标准安装用它自己的哪几个部位
 
-- **左侧筛选 chip**：全部 / 已屏蔽（各自带计数），外加名字+描述搜索。
-- **卡片左侧**：名字、来源徽标、**有效/错误徽标**、描述，以及一行事实
-  （判定失败的是 A/B/C 哪一条、frontmatter 缺什么、名字取自目录名、副本数量、
-  名字不合法无法开关等）。
-- **卡片右侧**：一个纯 CSS 开关键（点一下就是一次切换）+ 「操作」下拉菜单。
-- **操作菜单**：「补齐 frontmatter」（仅 frontmatter 有问题的项）与
-  「删除（全部副本）」；两者都有二次确认，且会把将受影响的文件路径一条条列出来。
-- **点开一行 → 详情（只读）**：点卡片左侧的事实区（名字 / 描述）进入详情页，
-  「返回列表」回到列表（筛选与搜索词保留）。开关键与「操作」按钮不在事实区里，
-  点它们不会跳走（名字不合法、不能写开关的行也照样能看详情）。
+| 标准安装要求 | 本包对应物 |
+|---|---|
+| `package.json` → `dsh.bundle.patch` 指向组合补丁 | ✅ `./cordis.patch.yml`（`insert` 一行 `skill-switch`） |
+| host 半体 ESM 入口 | ✅ `exports["."]` → `lib/index.js` |
+| client 半体声明 | ✅ `dsh.client{ inject, platform: "web" }` + `exports["./client"]` → `lib/client.js` |
+| 安装时**不需要构建**（pnpm ≥ 10 默认不给 git 依赖跑构建脚本） | ✅ `lib/` 随仓库提交（`lib/index.js`、`lib/client.js`、`lib/types/**`） |
+| 客户端只依赖平台模块 | ✅ 构建期纯度闸门强制（跨插件协作走 cordis 服务） |
+| 卸载后 profile 干净 | ✅ 只往 `dsh.profile.bundles` 里加一项；dispose 时摘除 `ctx.skills` 包装 |
 
-```
-┌ [返回列表]  demo  项目 .dsh  有效 ┐
-描述
-  代码审查流程
-判定依据
-  在 skill 注册表里（条件 A）    是
-  模型可主动调用（条件 B）      是
-  用户可显式调用（条件 C）      是
-存在的根位置 · 2 处副本
-  项目 .dsh  当前生效  目录 bundle  会被 DSH 加载  优先级 100
-    根: /proj/.dsh/skills
-    文件: /proj/.dsh/skills/demo/SKILL.md
-  用户  目录 bundle  会被 DSH 加载  优先级 400
-    根: /home/me/.dsh/skills
-    文件: /home/me/.dsh/skills/demo/SKILL.md
-```
+`dsh plugin --profile desktop add …` 做的三件事：初始化 profile → 在 profile 目录里
+执行 `pnpm <你的参数>` → 成功后把 manifest 里带 `dsh.bundle.patch` 的依赖追加进
+`dsh.profile.bundles`。
 
-详情只做"把列表里被折叠掉的事实摊开"：列表每行只显示**胜出副本**（rank 最小者），
-同名 skill 散在共享根 / DSH 根 / 库根里时，详情是唯一能看到另外几处的地方——包括
-每处副本**各自**的 frontmatter 问题（同一个名字在不同根里状态可能不同）、会不会被
-DSH 实际加载、能不能删。它**不带任何写动作**（屏蔽 / 删除 / 补齐仍在列表里）。
+### 前置要求
 
-顶部**不再显示**项目绝对路径、开关目录与 `mode`：那是内部实现细节，用户无法据此
-行动（开关目录的语义仍在「恢复本项全部」的二次确认里说明）。
+| 项 | 要求 | 说明 |
+|---|---|---|
+| DSH Desktop | `0.2.0-rc.2` 实测 | 面板用到 `ctx.agents` / `snapshot({ scope })` / `conversation.view` 座位 / `WebServer`，在这个版本上端到端验证过 |
+| Node | ≥ 20 | `engines.node` |
+| pnpm | **与 profile 一致的大版本**（本机 App 声明 `11.7.0`） | `dsh plugin` 把参数转发给 **PATH 上的 pnpm**；大版本不一致会撞 `ERR_PNPM_UNEXPECTED_STORE`（见下面坑 2） |
+| 平台 | macOS arm64 实测；代码无平台特定 | 路径只用 `node:path`，目录监视由官方 provider 负责 |
 
-## 安装
-
-标准入口就是 `dsh plugin`（它把参数转发给 profile 目录里的 pnpm，成功后把本包
-追加进 `dsh.profile.bundles`）：
+### 安装命令
 
 ```sh
-# 本地路径（开发/自用）
+# 1) 从 GitHub（公开仓库；lib/ 已随仓库提交，装完不用构建）
+dsh plugin --profile desktop add -w github:twenty-3rd/dsh-skill-switch
+
+# 2) 从本地 checkout（开发/自用）
 dsh plugin --profile desktop add -w /absolute/path/to/dsh-skill-switch
 
-# 发布到 npm 后
+# 3) 发布到 npm 之后
 dsh plugin --profile desktop add -w dsh-skill-switch
 ```
+
+`-w` 的意义见坑 1。装完**必须重启 DSH**（新增 bundle 改变 host 侧组合，只刷新页面不够），
+重启后视图标签条里会出现「Skill 开关」。
 
 ### 本机实测会踩的两个坑
 
@@ -121,10 +113,95 @@ corepack pnpm@11.7.0 add -w /absolute/path/to/dsh-skill-switch
 > 基础 bundle 由 App 运行时提供。所以组合与启动校验只能在 App 里做；CLI 侧
 > 只有 `plugin` 子命令被允许。
 
-装完后**必须重启 DSH**：新增 bundle 改变 host 侧组合，仅客户端热加载不够。
-重启后视图标签条里会出现「Skill 开关」。
+### 怎么确认装对了
 
-## 功能一：项目级屏蔽
+```sh
+# 结构面：profile 只应有两处变化
+cat ~/.dsh/profiles/desktop/package.json
+#   dependencies 里多一条 "dsh-skill-switch"
+#   dsh.profile.bundles 里多一项 "dsh-skill-switch"
+# cordis.patch.yml / pnpm-workspace.yaml / cordis.yml 不应有任何变化
+```
+
+```sh
+# 运行面（源码 checkout 才有；npm 包的 files 里不带 scripts/）
+cd /path/to/dsh-skill-switch
+pnpm install && pnpm verify:installed      # 25 项：产物能挂载、屏蔽/删除/补齐走真实 HTTP、
+                                           # 客户端产物符合 __ModuleLoader__ 契约、dispose 真摘包装
+```
+
+两条都过之后再重启 App，标签条里就会出现「Skill 开关」（不重启的话，结构面能确认，
+面板不出现）。
+
+### 卸载
+
+```sh
+dsh plugin --profile desktop remove -w dsh-skill-switch
+# 重启 DSH
+```
+
+面板与 `/skill-switch/api/*` 路由随 fiber dispose 一起消失，`ctx.skills` 的包装会被
+摘回原函数（有回归用例固定住"dispose 之后 `off/<name>` 不再隐藏"）。
+
+## 使用说明
+
+三步：**打开任一会话 → 点视图标签条里的「Skill 开关」→ 用行内开关切换**。
+面板按会话 cwd 所属的**项目**生效；切换立刻写盘，变化在**下一个模型轮次**生效，
+不需要重启。
+
+### 界面
+
+会话视图标签条里多出第三个标签（对话 / 轨迹 / **Skill 开关**；若装了
+dsh-skills-manager，它排在 Skills 管理器之后）。面板由三部分组成：
+
+```
+┌ 全部 12   已屏蔽 2 ┐                   [ 搜索… ]  [ 恢复本项全部 ]
+──────────────────────────────────────────────────────────────
+ 项目 .dsh  有效   [取消屏蔽 ▣] [操作]  review
+            代码审查流程
+ 项目 .dsh  错误   [屏蔽    ▢] [操作]  my-broken-skill
+            不在 skill 注册表里（DSH 不会加载它） · frontmatter 缺少 description
+```
+
+- **左侧筛选 chip**：全部 / 已屏蔽（各自带计数），外加名字+描述搜索。
+- **卡片左侧**：名字、来源徽标、**有效/错误徽标**、描述，以及一行事实
+  （判定失败的是 A/B/C 哪一条、frontmatter 缺什么、名字取自目录名、副本数量、
+  名字不合法无法开关等）。
+- **卡片右侧**：一个纯 CSS 开关键（点一下就是一次切换）+ 「操作」下拉菜单。
+- **操作菜单**：「补齐 frontmatter」（仅 frontmatter 有问题的项）与
+  「删除（全部副本）」；两者都有二次确认，且会把将受影响的文件路径一条条列出来。
+
+### 点开一行 → 详情（只读）
+
+点卡片左侧的事实区（名字 / 描述）进入详情页，「返回列表」回到列表（筛选与搜索词保留）。
+开关键与「操作」按钮不在事实区里，点它们不会跳走（名字不合法、不能写开关的行也照样能看详情）。
+
+```
+┌ [返回列表]  demo  项目 .dsh  有效 ┐
+描述
+  代码审查流程
+判定依据
+  在 skill 注册表里（条件 A）    是
+  模型可主动调用（条件 B）      是
+  用户可显式调用（条件 C）      是
+存在的根位置 · 2 处副本
+  项目 .dsh  当前生效  目录 bundle  会被 DSH 加载  优先级 100
+    根: /proj/.dsh/skills
+    文件: /proj/.dsh/skills/demo/SKILL.md
+  用户  目录 bundle  会被 DSH 加载  优先级 400
+    根: /home/me/.dsh/skills
+    文件: /home/me/.dsh/skills/demo/SKILL.md
+```
+
+详情只做"把列表里被折叠掉的事实摊开"：列表每行只显示**胜出副本**（rank 最小者），
+同名 skill 散在共享根 / DSH 根 / 库根里时，详情是唯一能看到另外几处的地方——包括
+每处副本**各自**的 frontmatter 问题（同一个名字在不同根里状态可能不同）、会不会被
+DSH 实际加载、能不能删。它**不带任何写动作**（屏蔽 / 删除 / 补齐仍在列表里）。
+
+顶部**不再显示**项目绝对路径、开关目录与 `mode`：那是内部实现细节，用户无法据此
+行动（开关目录的语义仍在「恢复本项全部」的二次确认里说明）。
+
+### 功能一：项目级屏蔽
 
 开关放在项目自己的 `.dsh/skill-switches/` 里，随仓库走、随项目生效：
 
@@ -164,7 +241,7 @@ touch .dsh/skill-switches/off/api-design.md    # .md 后缀也认
 rm -rf .dsh/skill-switches                     # 全部恢复
 ```
 
-## 功能二：全局删除
+### 功能二：全局删除
 
 「删除（全部副本）」会把该名字在**每一处已知根**里的副本都删掉：
 
@@ -197,6 +274,24 @@ rm -rf .dsh/skill-switches                     # 全部恢复
 - `/skill-switch` 的 error.message 一律是**面向机器的英文**（wire 层）；面板按
   wire code 出本地化文案，所以中文界面不会混进英文细节、英文界面也不会混进中文。
 - 删除成功后会顺手清掉本项目里该名字的开关文件，避免"删了再装回来还带着旧屏蔽"。
+
+### 配置
+
+在 profile 的 `cordis.patch.yml` 里按 id 覆盖：
+
+```yaml
+- id: skill-switch
+  config:
+    switchesDir: .dsh/skill-switches   # 相对项目根的开关目录
+    defaultMode: deny                  # deny | allow
+    cacheTtlMs: 1000                   # 状态缓存兜底时长（mtime 指纹命中则即时失效）
+    forceRefreshOnGet: true            # get() 拦截路径是否绕过缓存
+    dshHome: ''                        # 默认 resolveDshHome()（$DSH_HOME 或 ~/.dsh）
+    agentsHome: ''                     # 默认 $DSH_AGENTS_HOME 或 ~/.agents
+    customSkillDirs: []                # 额外 skill 根（同官方 provider 的 custom 层）
+    bundledSkillDir: ''                # 默认 $DSH_BUNDLED_SKILL_DIR
+    allowSharedRootWrites: true        # false = ~/.agents/skills 只读（不动 Claude Code 的共享根）
+```
 
 ## 注意点：判定「有效 / 错误」的口径
 
@@ -250,24 +345,6 @@ boolean / 1 / 0 / true / false / yes / no / on / off，出现 `disableModelInvoc
 
 「补齐 frontmatter」仍然只改 frontmatter（没有就插到文首，坏的整段替换），正文
 一字不动；修复后 `issues` 清空、判定转「有效」。
-
-## 配置
-
-在 profile 的 `cordis.patch.yml` 里按 id 覆盖：
-
-```yaml
-- id: skill-switch
-  config:
-    switchesDir: .dsh/skill-switches   # 相对项目根的开关目录
-    defaultMode: deny                  # deny | allow
-    cacheTtlMs: 1000                   # 状态缓存兜底时长（mtime 指纹命中则即时失效）
-    forceRefreshOnGet: true            # get() 拦截路径是否绕过缓存
-    dshHome: ''                        # 默认 resolveDshHome()（$DSH_HOME 或 ~/.dsh）
-    agentsHome: ''                     # 默认 $DSH_AGENTS_HOME 或 ~/.agents
-    customSkillDirs: []                # 额外 skill 根（同官方 provider 的 custom 层）
-    bundledSkillDir: ''                # 默认 $DSH_BUNDLED_SKILL_DIR
-    allowSharedRootWrites: true        # false = ~/.agents/skills 只读（不动 Claude Code 的共享根）
-```
 
 ## 架构
 
@@ -341,12 +418,17 @@ frontmatter 的 skill 确实在注册表里没有而在面板里有；删除后�
 - 「删除（全部副本）」不覆盖**其它项目**的项目级副本（见上文"范围要说清楚"）。
 - 需要 host 重启后插件才初次加载；之后的开关变化无需再重启。
 
+## 版本历史
+
+| 版本 | 内容 |
+|---|---|
+| **0.4.0** | 详情视图（点一行看每处盘上副本的根/文件/rank/可删性）、「返回列表」移到行右端、`lib/` 与 README 面向发布整理 |
+| 0.3.0 | 「有效 / 错误」判定（A ∧ B ∧ C）+ 按会话观察者作用域读注册表；删除「未生效」徽标与筛选面 |
+| 0.2.0 | host + client 双半体面板：会话标签页、一键开关、全局删除、补齐 frontmatter；135 项测试 |
+| 0.1.0 | 首个版本，纯文件协议：`.dsh/skill-switches/{mode,off/,on/}` 装饰 `ctx.skills` |
+
+逐条变更见 [`CHANGELOG.md`](CHANGELOG.md)。
+
 ## License
 
-MIT
-
-## 安装避坑
-
-往 profile 里装插件时踩过的 pnpm 版本 / workspace 根 / desktop profile 限制等问题，
-以及"不重启怎么确认装对了"的三层验证方法，整理在
-[`docs/dsh-plugin-install-notes.md`](../../docs/dsh-plugin-install-notes.md)。
+MIT，见 [LICENSE](LICENSE)。
