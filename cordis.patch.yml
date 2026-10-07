@@ -4,7 +4,7 @@
 # installed through the official CLI —
 #
 #   dsh plugin --profile <name> add /absolute/path/to/dsh-skill-switch   # local path
-#   dsh plugin --profile <name> add dsh-skill-switch                     # published
+#   dsh plugin --profile <name> add github:twenty-3rd/dsh-skill-switch   # GitHub repository
 #
 # — the command reconciles `dsh.profile.bundles` against installed packages
 # and, seeing this declaration, appends `dsh-skill-switch` to the bundle
