@@ -1,5 +1,13 @@
 # dsh-skill-switch
 
+[![GitHub stars](https://img.shields.io/github/stars/twenty-3rd/dsh-skill-switch?style=social&label=Star)](https://github.com/twenty-3rd/dsh-skill-switch)
+
+> ⭐ **如果它帮到了你，请点上面的 Star 收藏一下** →
+> <https://github.com/twenty-3rd/dsh-skill-switch>
+>
+> 收藏之后，下次要装、要排查的时候一眼就能找回来；Star 数也是"这个插件还有人用"
+> 的可见信号——它比 issue 更能决定一个开源插件还值不值得继续维护。
+
 DSH（DeepSeek Harness）的**项目级 skill 开关 + 全局删除**插件。在会话里多出一个
 「Skill 开关」标签页，用一张表把当前项目的 skill 列清楚，然后：
 
@@ -428,6 +436,16 @@ frontmatter 的 skill 确实在注册表里没有而在面板里有；删除后�
 | 0.1.0 | 首个版本，纯文件协议：`.dsh/skill-switches/{mode,off/,on/}` 装饰 `ctx.skills` |
 
 逐条变更见 [`CHANGELOG.md`](CHANGELOG.md)。
+
+## 支持这个项目
+
+- ⭐ **点 Star 收藏** ← 最省事也最有用的一步：<https://github.com/twenty-3rd/dsh-skill-switch>
+  （页面右上角 `☆ Star` → `★ Starred`）。它让更多在做 DSH skill 管理的人搜到这个插件，
+  也让我知道有人真的在用。
+- 🐛 **报问题 / 提需求**：<https://github.com/twenty-3rd/dsh-skill-switch/issues>
+  —— 安装踩的坑、判定口径的疑问、边界想放宽的地方，都欢迎开 issue。
+- 发现 README 说法与代码不一致（判定口径、已知边界），直接指出即可；本项目的原则是
+  "宁可不说，也不说错"，这类反馈优先级最高。
 
 ## License
 
